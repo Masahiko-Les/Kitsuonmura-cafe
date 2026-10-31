@@ -6,10 +6,10 @@ export const NAME_MAX = 12;
 export const TILE = 16;
 export const TERMS_VERSION = 1;
 
-// S=海 T=木 .=草 ,=畑 P=道 ~=池 F=柵 H=建物 M=郵便受け
+// S=海 D=砂漠 W=砂嵐 T=木 .=草 ,=畑 P=道 ~=池 F=柵 H=建物 M=郵便受け
 // 左上の 16×12 は最初の農場。すでに蒔かれた種の位置がずれないよう、ここは動かさない。
 export const MAP = [
-  "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS",
+  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
   "S..HH....,,,,,....,,,,.HHHH....S",
   "S..HHM...,,,,,.HHH,,,,.HHHH..TTS",
   "S..PP....,,,,,.HHH,,,,.HHHH...TS",
@@ -39,7 +39,10 @@ export const ROWS = MAP.length;
 // 画面に映す広さ。カメラが村人を追いかける
 export const VIEW_COLS = 16;
 export const VIEW_ROWS = 12;
-export const WALKABLE = new Set([".", ",", "P"]);
+// 北の砂漠の奥行き。島の北端（y=1）から北へこのマス数だけ歩け、その先は砂嵐で進めない
+export const DESERT_DEPTH = 10;
+export const WALKABLE = new Set([".", ",", "P", "D"]);
+// 砂漠（D）には今は蒔けない。将来、砂漠用の別の種を蒔けるようにする予定
 export const SOWABLE = new Set([".", ","]);
 
 export const CROPS = [
@@ -61,8 +64,11 @@ export const randomCrop = (): Crop => CROPS[Math.floor(Math.random() * CROPS.len
 export type Dir = "up" | "down" | "left" | "right";
 export const DIRS: Record<Dir, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
-// マップの外はずっと海
-export const tileAt = (x: number, y: number) => (MAP[y] && MAP[y][x]) || "S";
+// マップの北には砂漠と砂嵐が続き、それ以外の外はずっと海
+export const tileAt = (x: number, y: number) => {
+  if (y < 0 && x >= 0 && x < COLS) return y > -DESERT_DEPTH ? "D" : "W";
+  return (MAP[y] && MAP[y][x]) || "S";
+};
 
 // 建物。いまは入れない。将来は enterable を true にして中の画面を作る
 export type Building = { id: string; name: string; x: number; y: number; w: number; h: number; enterable: boolean };

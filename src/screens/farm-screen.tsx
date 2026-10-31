@@ -55,6 +55,9 @@ export function FarmScreen() {
     if (tileAt(pos.x + dx, pos.y + dy) === "M") {
       return { label: "開く", hint: "郵便受けだ。", run: a.showMailbox };
     }
+    if (tileAt(pos.x + dx, pos.y + dy) === "W") {
+      return { label: "…", hint: "風が強すぎて危険だ。これ以上進めない。", run: null };
+    }
     const building = buildingAt(pos.x + dx, pos.y + dy);
     if (building) {
       return { label: "…", hint: `${building.name}だ。今はまだ入れない。`, run: null };
@@ -72,6 +75,9 @@ export function FarmScreen() {
     }
     if (kind === "full") {
       return { label: "見る", hint: "5人に水やりされて、すっかり育った。", run: () => toast("この種は5人に水やりされ、育ちきりました。") };
+    }
+    if (tileAt(pos.x, pos.y) === "D") {
+      return { label: "…", hint: "砂漠だ。ここには種を蒔けない。", run: null };
     }
     if (SOWABLE.has(tileAt(pos.x, pos.y))) {
       const near = nearOpenSeed ? "近くに種の気配がする…　" : "";

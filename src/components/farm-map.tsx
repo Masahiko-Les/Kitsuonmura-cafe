@@ -4,7 +4,7 @@ import { type LayoutChangeEvent, StyleSheet, View } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { Seed } from "@/lib/farm-api";
-import { BUILDINGS, type Building, COLS, type Dir, ROWS, TILE, VIEW_COLS, VIEW_ROWS, tileAt } from "@/lib/game";
+import { BUILDINGS, type Building, COLS, DESERT_DEPTH, type Dir, ROWS, TILE, VIEW_COLS, VIEW_ROWS, tileAt } from "@/lib/game";
 import { C } from "@/theme";
 
 export const MOVE_MS = 150;
@@ -13,6 +13,7 @@ const H = ROWS * TILE;
 const VW = VIEW_COLS * TILE; // 画面に映す範囲
 const VH = VIEW_ROWS * TILE;
 const MARGIN = 2; // マップの外にも海を何マスぶん見せるか
+const NORTH = (DESERT_DEPTH + MARGIN) * TILE; // 北は砂漠の先の砂嵐まで見せる
 
 export type SeedKind = "mine" | "mine-review" | "watered" | "full" | "open" | null;
 
@@ -95,6 +96,24 @@ function drawSeaWave(X: number, Y: number, tx: number, ty: number, t: number) {
   const o = (Math.floor(t / 420 + tx * 5 + ty * 3) % 10) + 3;
   rect(X + o - 2, Y + 6, 3, 1, "#7fc0e0");
   rect(X + ((o + 5) % 10) + 2, Y + 10, 2, 1, "#7fc0e0");
+}
+function drawDesert(X: number, Y: number, tx: number, ty: number) {
+  rect(X, Y, 16, 16, "#e3c98a");
+  const h = hash(tx, ty);
+  // 砂の波紋と小石
+  rect(X + (h % 6) + 1, Y + 4 + ((h >> 4) % 3), 6, 1, "#cfb070");
+  rect(X + ((h >> 7) % 6) + 7, Y + 10 + ((h >> 10) % 3), 5, 1, "#cfb070");
+  if (h % 5 === 0) rect(X + ((h >> 12) % 12) + 2, Y + ((h >> 15) % 12) + 2, 2, 1, "#a8895a");
+}
+function drawStorm(X: number, Y: number) {
+  rect(X, Y, 16, 16, "#c9a46a");
+}
+function drawStormWind(X: number, Y: number, tx: number, ty: number, t: number) {
+  // 横に流れる風の筋
+  for (let i = 0; i < 3; i++) {
+    const o = Math.floor(t / 60 + tx * 16 + i * 23 + ty * 7) % 32;
+    rect(X + o - 8, Y + 3 + i * 5, 7, 1, "#efe0b8");
+  }
 }
 function drawTree(X: number, Y: number, tx: number, ty: number) {
   drawGrass(X, Y, tx, ty);
@@ -223,10 +242,10 @@ function playerPos(p: Player, t: number) {
 function camera(p: Player, t: number) {
   const { fx, fy } = playerPos(p, t);
   const m = MARGIN * TILE;
-  const clamp = (v: number, max: number) => Math.round(Math.min(Math.max(v, -m), max + m));
+  const clamp = (v: number, min: number, max: number) => Math.round(Math.min(Math.max(v, min), max));
   return {
-    x: clamp(fx * TILE + TILE / 2 - VW / 2, W - VW),
-    y: clamp(fy * TILE + TILE / 2 - VH / 2, H - VH),
+    x: clamp(fx * TILE + TILE / 2 - VW / 2, -m, W - VW + m),
+    y: clamp(fy * TILE + TILE / 2 - VH / 2, -NORTH, H - VH + m),
   };
 }
 
@@ -278,11 +297,13 @@ function drawEffects(t: number) {
 function staticLayer(): SkPicture {
   return createPicture((canvas) => {
     cv = canvas;
-    for (let y = -MARGIN; y < ROWS + MARGIN; y++) {
+    for (let y = -DESERT_DEPTH - MARGIN; y < ROWS + MARGIN; y++) {
       for (let x = -MARGIN; x < COLS + MARGIN; x++) {
         const X = x * TILE, Y = y * TILE;
         const c = tileAt(x, y);
         if (c === "S") drawSea(X, Y, x, y);
+        else if (c === "D") drawDesert(X, Y, x, y);
+        else if (c === "W") drawStorm(X, Y);
         else if (c === "." || c === "H") drawGrass(X, Y, x, y);
         else if (c === ",") drawSoil(X, Y);
         else if (c === "P") drawPath(X, Y, x, y);
@@ -291,7 +312,7 @@ function staticLayer(): SkPicture {
       }
     }
     BUILDINGS.forEach(drawBuilding);
-  }, Skia.XYWHRect(-MARGIN * TILE, -MARGIN * TILE, W + 2 * MARGIN * TILE, H + 2 * MARGIN * TILE));
+  }, Skia.XYWHRect(-MARGIN * TILE, -NORTH, W + 2 * MARGIN * TILE, H + NORTH + MARGIN * TILE));
 }
 
 function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
@@ -310,6 +331,7 @@ function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
       for (let x = x0; x <= x1; x++) {
         const c = tileAt(x, y);
         if (c === "S") drawSeaWave(x * TILE, y * TILE, x, y, t);
+        else if (c === "W") drawStormWind(x * TILE, y * TILE, x, y, t);
         else if (c === "~") drawWater(x * TILE, y * TILE, x, t);
         else if (c === "M") drawMailbox(x * TILE, y * TILE, x, y, scene.hasUnread);
       }
