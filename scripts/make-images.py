@@ -1,6 +1,7 @@
-"""アプリのアイコンと起動画像を作る。
+"""Android のアイコンと起動画像を作る。
 
-ゲーム内の芽のドット絵（farm-map.tsx の drawSoil / drawSprout）をそのまま大きくしている。
+アプリのアイコンは assets/images/icon.png（手描きのドット絵）をそのまま使う。
+起動画像は、ゲーム内の芽のドット絵（farm-map.tsx の drawSprout）を大きくしている。
 使い方：python3 scripts/make-images.py
 """
 from pathlib import Path
@@ -37,20 +38,15 @@ def sprout(draw, ox, oy, px, soil=True, mono=None):
     rect(9, 9 - h, 3, 2, "#7cc35a")
 
 
-def icon():
-    # iOS のアイコン：苔色の地に、畑の芽
-    img = Image.new("RGB", (1024, 1024), MOSS)
-    sprout(ImageDraw.Draw(img), 128, 128, 48)
-    img.save(OUT / "icon.png")
-
-
 def android():
     # アダプティブアイコン：中央 66% が必ず見える範囲
     bg = Image.new("RGB", (512, 512), MOSS)
     bg.save(OUT / "android-icon-background.png")
 
+    # 前景はアプリのアイコン（assets/images/icon.png）を縮めて、切り抜かれても欠けない中央に置く
     fg = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    sprout(ImageDraw.Draw(fg), 128, 128, 16)
+    art = Image.open(OUT / "icon.png").convert("RGBA").resize((340, 340), Image.NEAREST)
+    fg.paste(art, ((512 - 340) // 2, (512 - 340) // 2))
     fg.save(OUT / "android-icon-foreground.png")
 
     mono = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
@@ -75,7 +71,6 @@ def splash():
 
 
 if __name__ == "__main__":
-    icon()
     android()
     splash()
     print("assets/images に書き出しました")
