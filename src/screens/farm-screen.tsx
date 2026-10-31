@@ -9,7 +9,7 @@ import { useModal } from "@/components/modal-host";
 import { useToast } from "@/components/toast";
 import { T } from "@/components/ui";
 import type { Seed } from "@/lib/farm-api";
-import { DIRS, type Dir, MAX_WATERERS, SOWABLE, WALKABLE, keyOf, tileAt } from "@/lib/game";
+import { DIRS, type Dir, MAX_WATERERS, SOWABLE, WALKABLE, buildingAt, keyOf, tileAt } from "@/lib/game";
 import { useActions } from "@/modals";
 import { useFarm } from "@/state/farm";
 import { C } from "@/theme";
@@ -54,6 +54,10 @@ export function FarmScreen() {
     const [dx, dy] = DIRS[pos.dir];
     if (tileAt(pos.x + dx, pos.y + dy) === "M") {
       return { label: "開く", hint: "郵便受けだ。", run: a.showMailbox };
+    }
+    const building = buildingAt(pos.x + dx, pos.y + dy);
+    if (building) {
+      return { label: "…", hint: `${building.name}だ。今はまだ入れない。`, run: null };
     }
     const seed = seedAt(pos.x, pos.y);
     const kind = kindOf(seed);

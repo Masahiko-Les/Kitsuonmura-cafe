@@ -4,7 +4,7 @@ import { type LayoutChangeEvent, StyleSheet, View } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { Seed } from "@/lib/farm-api";
-import { COLS, type Dir, ROWS, TILE, VIEW_COLS, VIEW_ROWS, tileAt } from "@/lib/game";
+import { BUILDINGS, type Building, COLS, type Dir, ROWS, TILE, VIEW_COLS, VIEW_ROWS, tileAt } from "@/lib/game";
 import { C } from "@/theme";
 
 export const MOVE_MS = 150;
@@ -12,6 +12,7 @@ const W = COLS * TILE; // マップ全体
 const H = ROWS * TILE;
 const VW = VIEW_COLS * TILE; // 画面に映す範囲
 const VH = VIEW_ROWS * TILE;
+const MARGIN = 2; // マップの外にも海を何マスぶん見せるか
 
 export type SeedKind = "mine" | "mine-review" | "watered" | "full" | "open" | null;
 
@@ -81,6 +82,20 @@ function drawWater(X: number, Y: number, tx: number, t: number) {
   rect(X + o, Y + 4, 4, 1, "#9ed3e6");
   rect(X + ((o + 6) % 12), Y + 10, 3, 1, "#9ed3e6");
 }
+function drawSea(X: number, Y: number, tx: number, ty: number) {
+  rect(X, Y, 16, 16, "#3b7fae");
+  // 陸と接する辺に、砂浜と白い波
+  const land = (x: number, y: number) => tileAt(x, y) !== "S";
+  if (land(tx, ty - 1)) { rect(X, Y, 16, 3, "#e9d9a6"); rect(X, Y + 3, 16, 1, "#e8f4f8"); }
+  if (land(tx, ty + 1)) { rect(X, Y + 13, 16, 3, "#e9d9a6"); rect(X, Y + 12, 16, 1, "#e8f4f8"); }
+  if (land(tx - 1, ty)) { rect(X, Y, 3, 16, "#e9d9a6"); rect(X + 3, Y, 1, 16, "#e8f4f8"); }
+  if (land(tx + 1, ty)) { rect(X + 13, Y, 3, 16, "#e9d9a6"); rect(X + 12, Y, 1, 16, "#e8f4f8"); }
+}
+function drawSeaWave(X: number, Y: number, tx: number, ty: number, t: number) {
+  const o = (Math.floor(t / 420 + tx * 5 + ty * 3) % 10) + 3;
+  rect(X + o - 2, Y + 6, 3, 1, "#7fc0e0");
+  rect(X + ((o + 5) % 10) + 2, Y + 10, 2, 1, "#7fc0e0");
+}
 function drawTree(X: number, Y: number, tx: number, ty: number) {
   drawGrass(X, Y, tx, ty);
   rect(X + 7, Y + 11, 2, 4, "#6b4a2e");
@@ -103,8 +118,8 @@ function drawMailbox(X: number, Y: number, tx: number, ty: number, hasUnread: bo
   rect(X + 4, Y + 3, 8, 1, "#e06a5c");
   if (hasUnread) { rect(X + 12, Y + 1, 2, 5, "#7a5a3a"); rect(X + 12, Y + 1, 3, 2, "#f2d04b"); }
 }
-function drawHouse() {
-  const X = 3 * TILE, Y = 1 * TILE;
+/* ---------- 建物 ---------- */
+function drawHouse(X: number, Y: number) {
   rect(X + 2, Y + 12, 28, 20, "#ead9b5");
   rect(X, Y, 32, 13, "#b5523b");
   for (let i = 0; i < 4; i++) rect(X, Y + 3 * i + 1, 32, 1, "#93402d");
@@ -112,6 +127,57 @@ function drawHouse() {
   rect(X + 18, Y + 26, 1, 1, "#f2d04b");
   rect(X + 4, Y + 16, 6, 6, "#7fb6d6");
   rect(X + 22, Y + 16, 6, 6, "#7fb6d6");
+}
+function drawCafe(X: number, Y: number) {
+  rect(X + 2, Y + 10, 44, 22, "#f3e3c3");
+  rect(X + 2, Y, 44, 2, "#7d5838");
+  rect(X, Y + 2, 48, 9, "#6b4a2e");
+  // 看板（コーヒーカップ）
+  rect(X + 20, Y + 3, 9, 7, "#f6efd9");
+  rect(X + 22, Y + 5, 4, 3, "#6b4a2e");
+  rect(X + 26, Y + 6, 1, 1, "#6b4a2e");
+  // しましまのひさし
+  for (let i = 0; i < 11; i++) rect(X + 2 + i * 4, Y + 11, 4, 4, i % 2 ? "#f6efd9" : "#c4473a");
+  rect(X + 6, Y + 18, 14, 9, "#7fb6d6");
+  rect(X + 13, Y + 18, 1, 9, "#f3e3c3");
+  rect(X + 30, Y + 18, 10, 14, "#7a5235");
+  rect(X + 37, Y + 25, 1, 1, "#f2d04b");
+}
+function drawLibrary(X: number, Y: number) {
+  rect(X + 2, Y + 10, 44, 22, "#b5714a");
+  for (const r of [14, 19, 24, 29]) rect(X + 2, Y + r, 44, 1, "#9a5d3c");
+  rect(X, Y + 1, 48, 10, "#3f6f8a");
+  rect(X, Y + 4, 48, 1, "#335c73");
+  rect(X, Y + 7, 48, 1, "#335c73");
+  rect(X + 6, Y + 15, 8, 11, "#7fb6d6");
+  rect(X + 34, Y + 15, 8, 11, "#7fb6d6");
+  // 看板（本）
+  rect(X + 19, Y + 11, 10, 5, "#f6efd9");
+  rect(X + 21, Y + 12, 3, 3, "#c4473a");
+  rect(X + 24, Y + 12, 3, 3, "#3f6fb0");
+  rect(X + 20, Y + 17, 8, 1, "#5a3e2b");
+  rect(X + 19, Y + 18, 10, 14, "#5a3e2b");
+}
+function drawHall(X: number, Y: number) {
+  rect(X + 2, Y + 16, 60, 32, "#ece6d8");
+  // 三角屋根と時計
+  for (let i = 0; i < 8; i++) rect(X + 28 - i * 3, Y + 3 + i, 8 + i * 6, 1, "#5d6470");
+  rect(X, Y + 10, 64, 7, "#5d6470");
+  rect(X + 28, Y + 4, 8, 8, "#f6efd9");
+  rect(X + 31, Y + 5, 1, 4, "#2f2a24");
+  rect(X + 31, Y + 8, 3, 1, "#2f2a24");
+  for (const px of [8, 20, 40, 52]) rect(X + px, Y + 20, 4, 26, "#d6cfbf");
+  rect(X + 13, Y + 24, 6, 8, "#7fb6d6");
+  rect(X + 45, Y + 24, 6, 8, "#7fb6d6");
+  rect(X + 26, Y + 30, 12, 16, "#7a5235");
+  rect(X + 32, Y + 30, 1, 16, "#5a3e2b");
+  rect(X + 22, Y + 46, 20, 2, "#bfb8a8");
+}
+const BUILDING_ART: Record<string, (X: number, Y: number) => void> = {
+  house: drawHouse, cafe: drawCafe, library: drawLibrary, hall: drawHall,
+};
+function drawBuilding(b: Building) {
+  BUILDING_ART[b.id]?.(b.x * TILE, b.y * TILE);
 }
 
 /* ---------- 種 ---------- */
@@ -156,7 +222,8 @@ function playerPos(p: Player, t: number) {
 // 村人が画面の中央に来るカメラ位置。マップの端からははみ出さない
 function camera(p: Player, t: number) {
   const { fx, fy } = playerPos(p, t);
-  const clamp = (v: number, max: number) => Math.round(Math.min(Math.max(v, 0), max));
+  const m = MARGIN * TILE;
+  const clamp = (v: number, max: number) => Math.round(Math.min(Math.max(v, -m), max + m));
   return {
     x: clamp(fx * TILE + TILE / 2 - VW / 2, W - VW),
     y: clamp(fy * TILE + TILE / 2 - VH / 2, H - VH),
@@ -207,23 +274,24 @@ function drawEffects(t: number) {
 }
 
 /* ---------- 1フレーム ---------- */
-// 池と郵便受け以外は動かないので、一度だけ描いておく
+// 波・池・郵便受け以外は動かないので、一度だけ描いておく（まわりの海も含める）
 function staticLayer(): SkPicture {
   return createPicture((canvas) => {
     cv = canvas;
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
+    for (let y = -MARGIN; y < ROWS + MARGIN; y++) {
+      for (let x = -MARGIN; x < COLS + MARGIN; x++) {
         const X = x * TILE, Y = y * TILE;
         const c = tileAt(x, y);
-        if (c === "." || c === "H") drawGrass(X, Y, x, y);
+        if (c === "S") drawSea(X, Y, x, y);
+        else if (c === "." || c === "H") drawGrass(X, Y, x, y);
         else if (c === ",") drawSoil(X, Y);
         else if (c === "P") drawPath(X, Y, x, y);
         else if (c === "T") drawTree(X, Y, x, y);
         else if (c === "F") drawFence(X, Y, x, y);
       }
     }
-    drawHouse();
-  }, { width: W, height: H });
+    BUILDINGS.forEach(drawBuilding);
+  }, Skia.XYWHRect(-MARGIN * TILE, -MARGIN * TILE, W + 2 * MARGIN * TILE, H + 2 * MARGIN * TILE));
 }
 
 function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
@@ -231,8 +299,8 @@ function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
     cv = canvas;
     const cam = camera(scene.player, t);
     // 画面に入るマスの範囲（はしの半端なマスも含める）
-    const x0 = Math.floor(cam.x / TILE), x1 = Math.min(COLS - 1, Math.ceil((cam.x + VW) / TILE));
-    const y0 = Math.floor(cam.y / TILE), y1 = Math.min(ROWS - 1, Math.ceil((cam.y + VH) / TILE));
+    const x0 = Math.floor(cam.x / TILE), x1 = Math.ceil((cam.x + VW) / TILE);
+    const y0 = Math.floor(cam.y / TILE), y1 = Math.ceil((cam.y + VH) / TILE);
     const inView = (x: number, y: number) => x >= x0 - 1 && x <= x1 && y >= y0 - 1 && y <= y1;
 
     canvas.save();
@@ -241,7 +309,8 @@ function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const c = tileAt(x, y);
-        if (c === "~") drawWater(x * TILE, y * TILE, x, t);
+        if (c === "S") drawSeaWave(x * TILE, y * TILE, x, y, t);
+        else if (c === "~") drawWater(x * TILE, y * TILE, x, t);
         else if (c === "M") drawMailbox(x * TILE, y * TILE, x, y, scene.hasUnread);
       }
     }
