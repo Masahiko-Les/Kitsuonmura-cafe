@@ -323,7 +323,9 @@ function LetterModal({ letter: initialLetter }: { letter: Letter }) {
   const thanks = async () => {
     setBusy(true);
     try {
-      const c = randomCrop();
+      // 同じ種からは、誰の水やりでも同じ作物が実る。最初の1つだけランダムに決める
+      const sameSeed = crops.find((x) => x.seedId === letter.seedId && x.sowerUid === uid);
+      const c = sameSeed ? cropById(sameSeed.cropType) : randomCrop();
       await sayThanks(uid, name, letter, c.id);
       a.showHarvest(letter, c);
     } catch (e) {
