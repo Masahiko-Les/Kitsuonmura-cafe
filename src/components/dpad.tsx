@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 
@@ -19,10 +19,9 @@ const ARMS: { dir: Dir; glyph: string; label: string }[] = [
   { dir: "down", glyph: "▼︎", label: "下へ" },
 ];
 
-function dirFrom(x: number, y: number, current: Dir | null): Dir | null {
-  const dx = x - SIZE / 2;
-  const dy = y - SIZE / 2;
-  if (Math.hypot(dx, dy) < DEAD) return null;
+// 指のずれ（dx, dy）から上下左右を決める。dead 以内は「方向なし」
+function dirFromDelta(dx: number, dy: number, current: Dir | null, dead = DEAD): Dir | null {
+  if (Math.hypot(dx, dy) < dead) return null;
   const ax = Math.abs(dx), ay = Math.abs(dy);
   const horizontal = current === "left" || current === "right";
   const vertical = current === "up" || current === "down";
@@ -30,14 +29,12 @@ function dirFrom(x: number, y: number, current: Dir | null): Dir | null {
   return useX ? (dx < 0 ? "left" : "right") : dy < 0 ? "up" : "down";
 }
 
-// 十字キー全体が1つのタッチ面。指を置いたまま滑らせると方向が変わる。
-export function DPad({ onDirChange, onStep }: {
-  onDirChange: (dir: Dir | null) => void;
-  onStep: (dir: Dir) => void; // 読み上げ機能から1歩ずつ動かすとき
-}) {
+const dirFrom = (x: number, y: number, current: Dir | null) => dirFromDelta(x - SIZE / 2, y - SIZE / 2, current);
+
+// 方向が変わったときだけ知らせ、軽く振動させる
+function useDirState(onDirChange: (dir: Dir | null) => void) {
   const [active, setActive] = useState<Dir | null>(null);
   const current = useRef<Dir | null>(null);
-
   const set = (dir: Dir | null) => {
     if (dir === current.current) return;
     current.current = dir;
@@ -45,6 +42,15 @@ export function DPad({ onDirChange, onStep }: {
     onDirChange(dir);
     if (dir) Haptics.selectionAsync().catch(() => {});
   };
+  return { active, current, set };
+}
+
+// 十字キー全体が1つのタッチ面。指を置いたまま滑らせると方向が変わる。
+export function DPad({ onDirChange, onStep }: {
+  onDirChange: (dir: Dir | null) => void;
+  onStep: (dir: Dir) => void; // 読み上げ機能から1歩ずつ動かすとき
+}) {
+  const { active, current, set } = useDirState(onDirChange);
 
   const pan = usePanGesture({
     minDistance: 0,
@@ -76,6 +82,22 @@ export function DPad({ onDirChange, onStep }: {
   );
 }
 
+// マップの上をなぞると、なぞった方向に歩く。指を離すと止まる
+export function SwipeArea({ onDirChange, children }: { onDirChange: (dir: Dir | null) => void; children: ReactNode }) {
+  const { current, set } = useDirState(onDirChange);
+  const pan = usePanGesture({
+    minDistance: 8,
+    runOnJS: true,
+    onUpdate: (e) => set(dirFromDelta(e.translationX, e.translationY, current.current, 16)),
+    onFinalize: () => set(null),
+  });
+  return (
+    <GestureDetector gesture={pan}>
+      <View style={s.fill}>{children}</View>
+    </GestureDetector>
+  );
+}
+
 const POS = StyleSheet.create({
   up: { left: PAD, top: 0, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
   left: { left: 0, top: PAD, borderTopLeftRadius: 8, borderBottomLeftRadius: 8 },
@@ -84,6 +106,7 @@ const POS = StyleSheet.create({
 });
 
 const s = StyleSheet.create({
+  fill: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   dpad: { width: SIZE, height: SIZE },
   pad: {
     position: "absolute",

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { DPad } from "@/components/dpad";
+import { DPad, SwipeArea } from "@/components/dpad";
 import { FarmMap, MOVE_MS, type Player, type Scene, type SeedKind } from "@/components/farm-map";
 import { useModal } from "@/components/modal-host";
 import { useToast } from "@/components/toast";
@@ -150,7 +150,9 @@ export function FarmScreen() {
 
   return (
     <View style={s.root}>
-      <FarmMap scene={sceneRef} paused={modal.isOpen} focusY={focusY} />
+      <SwipeArea onDirChange={onDirChange}>
+        <FarmMap scene={sceneRef} paused={modal.isOpen} focusY={focusY} />
+      </SwipeArea>
 
       <View style={[s.hud, { paddingTop: insets.top + 8, paddingLeft: insets.left + 12, paddingRight: insets.right + 12 }]}>
         <T style={s.villager} numberOfLines={1}>{`${farm.name}さん`}</T>
