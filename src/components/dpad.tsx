@@ -7,7 +7,7 @@ import type { Dir } from "@/lib/game";
 import { C } from "@/theme";
 import { T } from "./ui";
 
-const PAD = 60;
+const PAD = 56;
 const SIZE = PAD * 3;
 const DEAD = 14; // 中心からこの距離までは「方向なし」
 const STICKY = 1.25; // 斜めでちらつかないよう、今の方向を少し優先する
@@ -66,7 +66,7 @@ export function DPad({ onDirChange, onStep }: {
         onAccessibilityAction={(e) => onStep(e.nativeEvent.actionName as Dir)}
       >
         {ARMS.map((a) => (
-          <View key={a.dir} style={[s.pad, POS[a.dir], active === a.dir && { backgroundColor: C.mossDeep }]}>
+          <View key={a.dir} style={[s.pad, POS[a.dir], active === a.dir && s.padOn]}>
             <T style={s.padText}>{a.glyph}</T>
           </View>
         ))}
@@ -89,12 +89,13 @@ const s = StyleSheet.create({
     position: "absolute",
     width: PAD,
     height: PAD,
-    backgroundColor: C.mossSoft,
-    borderColor: C.mossDeep,
+    backgroundColor: "rgba(60,75,55,0.55)",
+    borderColor: "rgba(31,39,29,0.7)",
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
   },
-  center: { position: "absolute", left: PAD, top: PAD, width: PAD, height: PAD, backgroundColor: C.mossSoft },
+  padOn: { backgroundColor: "rgba(31,39,29,0.85)" },
+  center: { position: "absolute", left: PAD, top: PAD, width: PAD, height: PAD, backgroundColor: "rgba(60,75,55,0.55)" },
   padText: { fontSize: 18, color: C.soft },
 });

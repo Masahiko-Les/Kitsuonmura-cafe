@@ -36,9 +36,8 @@ export const MAP = [
 ];
 export const COLS = MAP[0].length;
 export const ROWS = MAP.length;
-// 画面に映す広さ。カメラが村人を追いかける
-export const VIEW_COLS = 16;
-export const VIEW_ROWS = 12;
+// 画面に横に何マス見せるか（縦は画面の高さで決まる）。カメラが村人を追いかける
+export const VIEW_TILES_ACROSS = 11;
 // 北の砂漠の奥行き。島の北端（y=1）から北へこのマス数だけ歩け、その先は砂嵐で進めない
 export const DESERT_DEPTH = 10;
 export const WALKABLE = new Set([".", ",", "P", "D"]);

@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useCallback, useContext, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { FadeInDown, FadeOut } from "react-native-reanimated";
+import Animated, { FadeInUp, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { C } from "@/theme";
@@ -37,9 +37,9 @@ export function ToastLayer() {
   const message = useContext(MessageContext);
   const insets = useSafeAreaInsets();
   return (
-    <View pointerEvents="none" style={[s.wrap, { bottom: 24 + insets.bottom }]}>
+    <View pointerEvents="none" style={[s.wrap, { top: insets.top + 64 }]}>
       {message ? (
-        <Animated.View key={message.id} entering={FadeInDown.duration(250)} exiting={FadeOut.duration(250)} style={s.toast}>
+        <Animated.View key={message.id} entering={FadeInUp.duration(250)} exiting={FadeOut.duration(250)} style={s.toast}>
           <T style={s.text} accessibilityLiveRegion="polite">{message.text}</T>
         </Animated.View>
       ) : null}

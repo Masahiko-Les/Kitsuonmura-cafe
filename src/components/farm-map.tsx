@@ -1,17 +1,16 @@
 import { Canvas, Group, Picture, Skia, type SkCanvas, type SkPaint, type SkPicture, createPicture } from "@shopify/react-native-skia";
 import { type RefObject, useEffect, useMemo, useState } from "react";
-import { type LayoutChangeEvent, StyleSheet, View } from "react-native";
+import { type LayoutChangeEvent, PixelRatio, StyleSheet, View } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { Seed } from "@/lib/farm-api";
-import { BUILDINGS, type Building, COLS, DESERT_DEPTH, type Dir, ROWS, TILE, VIEW_COLS, VIEW_ROWS, tileAt } from "@/lib/game";
-import { C } from "@/theme";
+import { BUILDINGS, type Building, COLS, DESERT_DEPTH, type Dir, ROWS, TILE, VIEW_TILES_ACROSS, tileAt } from "@/lib/game";
 
 export const MOVE_MS = 150;
 const W = COLS * TILE; // マップ全体
 const H = ROWS * TILE;
-const VW = VIEW_COLS * TILE; // 画面に映す範囲
-const VH = VIEW_ROWS * TILE;
+// 画面に映す範囲（マップの画素単位）と、村人を置く高さ（画面の上からの割合）
+type ViewSize = { w: number; h: number; focusY: number };
 const MARGIN = 2; // マップの外にも海を何マスぶん見せるか
 const NORTH = (DESERT_DEPTH + MARGIN) * TILE; // 北は砂漠の先の砂嵐まで見せる
 
@@ -239,13 +238,15 @@ function playerPos(p: Player, t: number) {
 }
 
 // 村人が画面の中央に来るカメラ位置。マップの端からははみ出さない
-function camera(p: Player, t: number) {
+function camera(p: Player, t: number, v: ViewSize) {
   const { fx, fy } = playerPos(p, t);
   const m = MARGIN * TILE;
-  const clamp = (v: number, min: number, max: number) => Math.round(Math.min(Math.max(v, min), max));
+  // 画面のほうが広いときは、真ん中に寄せる
+  const clamp = (n: number, min: number, max: number) =>
+    Math.round(min > max ? (min + max) / 2 : Math.min(Math.max(n, min), max));
   return {
-    x: clamp(fx * TILE + TILE / 2 - VW / 2, -m, W - VW + m),
-    y: clamp(fy * TILE + TILE / 2 - VH / 2, -NORTH, H - VH + m),
+    x: clamp(fx * TILE + TILE / 2 - v.w / 2, -m, W - v.w + m),
+    y: clamp(fy * TILE + TILE / 2 - v.h * v.focusY, -NORTH, H - v.h + m),
   };
 }
 
@@ -315,13 +316,13 @@ function staticLayer(): SkPicture {
   }, Skia.XYWHRect(-MARGIN * TILE, -NORTH, W + 2 * MARGIN * TILE, H + NORTH + MARGIN * TILE));
 }
 
-function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
+function frame(base: SkPicture, scene: Scene, t: number, v: ViewSize): SkPicture {
   return createPicture((canvas) => {
     cv = canvas;
-    const cam = camera(scene.player, t);
+    const cam = camera(scene.player, t, v);
     // 画面に入るマスの範囲（はしの半端なマスも含める）
-    const x0 = Math.floor(cam.x / TILE), x1 = Math.ceil((cam.x + VW) / TILE);
-    const y0 = Math.floor(cam.y / TILE), y1 = Math.ceil((cam.y + VH) / TILE);
+    const x0 = Math.floor(cam.x / TILE), x1 = Math.ceil((cam.x + v.w) / TILE);
+    const y0 = Math.floor(cam.y / TILE), y1 = Math.ceil((cam.y + v.h) / TILE);
     const inView = (x: number, y: number) => x >= x0 - 1 && x <= x1 && y >= y0 - 1 && y <= y1;
 
     canvas.save();
@@ -350,50 +351,55 @@ function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
     drawEffects(t);
     drawPlayer(scene.player, t);
     canvas.restore();
-  }, { width: VW, height: VH });
+  }, { width: v.w, height: v.h });
 }
 
-export function FarmMap({ scene, paused }: { scene: RefObject<Scene>; paused: boolean }) {
-  const [width, setWidth] = useState(0);
+// 横に約 VIEW_TILES_ACROSS マス見える倍率。ドットがにじまないよう端末の画素に合わせて丸める
+function scaleFor(width: number) {
+  const pr = PixelRatio.get();
+  return Math.max(1 / pr, Math.round((width / (VIEW_TILES_ACROSS * TILE)) * pr) / pr);
+}
+
+// 画面いっぱいに敷くマップ。親が大きさを決める（absoluteFill などで置く）
+export function FarmMap({ scene, paused, focusY = 0.5 }: { scene: RefObject<Scene>; paused: boolean; focusY?: number }) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
   const base = useMemo(() => staticLayer(), []);
   const picture = useSharedValue<SkPicture>(base);
+  const scale = size.width ? scaleFor(size.width) : 1;
+  const view = useMemo(
+    () => ({ w: size.width / scale, h: size.height / scale, focusY }),
+    [size.width, size.height, scale, focusY],
+  );
 
   useEffect(() => {
-    if (paused) return;
+    if (paused || !view.w) return;
     let raf = 0;
     const loop = (t: number) => {
-      picture.value = frame(base, scene.current, t);
+      picture.value = frame(base, scene.current, t, view);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [base, scene, picture, paused]);
+  }, [base, scene, picture, paused, view]);
 
-  const scale = width / VW;
   return (
     <View
-      style={s.screen}
-      onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width - 8)}
+      style={s.fill}
+      onLayout={(e: LayoutChangeEvent) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
       accessibilityLabel="農園のマップ"
       accessibilityRole="image"
     >
-      {width > 0 ? (
-        <Canvas style={{ width, height: VH * scale }}>
+      {size.width > 0 ? (
+        <Canvas style={s.fill}>
           <Group transform={[{ scale }]}>
             <Picture picture={picture} />
           </Group>
         </Canvas>
-      ) : <View style={{ aspectRatio: VW / VH }} />}
+      ) : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  screen: {
-    borderWidth: 4,
-    borderColor: C.mossDeep,
-    borderRadius: 8,
-    overflow: "hidden",
-    backgroundColor: "#000",
-  },
+  fill: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#3b7fae" },
 });

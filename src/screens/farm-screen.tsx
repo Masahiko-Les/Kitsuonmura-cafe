@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { DPad } from "@/components/dpad";
 import { FarmMap, MOVE_MS, type Player, type Scene, type SeedKind } from "@/components/farm-map";
@@ -21,6 +21,8 @@ export function FarmScreen() {
   const modal = useModal();
   const toast = useToast();
   const a = useActions();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
 
   // 立ち位置と向き。ヒントとAボタンの表示に使う
   const [pos, setPos] = useState({ x: 8, y: 9, dir: "down" as Dir });
@@ -141,35 +143,45 @@ export function FarmScreen() {
     action.run?.();
   };
 
+  // 村人は、上の帯と操作部のあいだの真ん中に置く
+  const topH = insets.top + HUD_H;
+  const bottomH = insets.bottom + BOTTOM_PAD + DPAD_SIZE + GAP + HINT_H + GAP;
+  const focusY = height > 0 ? (topH + (height - bottomH)) / 2 / height : 0.5;
+
   return (
-    <SafeAreaView style={s.root} edges={["top", "bottom", "left", "right"]}>
-      <View style={s.app}>
-        <View style={s.hud}>
-          <T style={s.villager} numberOfLines={1}>{`${farm.name}さん`}</T>
-          <View style={s.hudActions}>
-            <HudBtn label="郵便受け" badge={farm.unreadCount} onPress={a.showMailbox} />
-            <HudBtn label="思い出帳" onPress={a.showBook} />
-            <HudBtn label="設定" onPress={() => router.push("/settings")} />
-          </View>
+    <View style={s.root}>
+      <FarmMap scene={sceneRef} paused={modal.isOpen} focusY={focusY} />
+
+      <View style={[s.hud, { paddingTop: insets.top + 8, paddingLeft: insets.left + 12, paddingRight: insets.right + 12 }]}>
+        <T style={s.villager} numberOfLines={1}>{`${farm.name}さん`}</T>
+        <View style={s.hudActions}>
+          <HudBtn label="郵便受け" badge={farm.unreadCount} onPress={a.showMailbox} />
+          <HudBtn label="思い出帳" onPress={a.showBook} />
+          <HudBtn label="設定" onPress={() => router.push("/settings")} />
         </View>
+      </View>
 
-        <FarmMap scene={sceneRef} paused={modal.isOpen} />
-        <View style={s.hint}><T style={s.hintText} accessibilityLiveRegion="polite">{action.hint}</T></View>
-
-        <View style={s.controls}>
+      <View
+        pointerEvents="box-none"
+        style={[s.bottom, { paddingBottom: insets.bottom + BOTTOM_PAD, paddingLeft: insets.left + 12, paddingRight: insets.right + 12 }]}
+      >
+        <View style={s.hint} pointerEvents="none">
+          <T style={s.hintText} accessibilityLiveRegion="polite">{action.hint}</T>
+        </View>
+        <View style={s.controls} pointerEvents="box-none">
           <DPad onDirChange={onDirChange} onStep={tryMove} />
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: !action.run }}
             disabled={!action.run}
             onPress={pressA}
-            style={({ pressed }) => [s.aBtn, pressed && s.aBtnPressed, !action.run && { opacity: 0.6 }]}
+            style={({ pressed }) => [s.aBtn, pressed && s.aBtnPressed, !action.run && s.aBtnOff]}
           >
             <T style={s.aText}>{action.label}</T>
           </Pressable>
         </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -187,10 +199,27 @@ function HudBtn({ label, badge = 0, onPress }: { label: string; badge?: number; 
   );
 }
 
+const HUD_H = 52; // 上の帯（ステータスバーを除く）
+const HINT_H = 52;
+const DPAD_SIZE = 168;
+const GAP = 8;
+const BOTTOM_PAD = 12;
+const A_SIZE = 96;
+
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.moss },
-  app: { flex: 1, width: "100%", maxWidth: 480, alignSelf: "center", paddingHorizontal: 14, paddingTop: 12, paddingBottom: 16 },
-  hud: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 },
+  hud: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingBottom: 8,
+    backgroundColor: "rgba(31,39,29,0.78)",
+  },
   villager: { fontSize: 15, color: C.leaf, flexShrink: 1 },
   hudActions: { flexDirection: "row", gap: 6, flexShrink: 0 },
   hudBtn: {
@@ -220,24 +249,29 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   badgeText: { fontSize: 12, color: "#fff", lineHeight: 16 },
-  hint: { minHeight: 52, marginTop: 10, marginBottom: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: C.mossDeep, borderRadius: 6, justifyContent: "center" },
+  bottom: { position: "absolute", left: 0, right: 0, bottom: 0, gap: GAP },
+  hint: {
+    minHeight: HINT_H,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(31,39,29,0.82)",
+    borderRadius: 6,
+    justifyContent: "center",
+  },
   hintText: { fontSize: 15, lineHeight: 22 },
-  controls: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 },
+  controls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   aBtn: {
-    width: 108,
-    height: 108,
-    borderRadius: 54,
-    backgroundColor: C.leaf,
-    borderColor: C.mossDeep,
+    width: A_SIZE,
+    height: A_SIZE,
+    borderRadius: A_SIZE / 2,
+    marginRight: 8,
+    backgroundColor: "rgba(156,200,106,0.82)",
+    borderColor: "rgba(31,39,29,0.7)",
     borderWidth: 3,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: C.mossDeep,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
   },
-  aBtnPressed: { transform: [{ translateY: 3 }], shadowOffset: { width: 0, height: 2 } },
+  aBtnPressed: { backgroundColor: "rgba(156,200,106,0.95)", transform: [{ translateY: 2 }] },
+  aBtnOff: { backgroundColor: "rgba(111,154,68,0.6)" },
   aText: { fontSize: 18, color: C.ink },
 });
