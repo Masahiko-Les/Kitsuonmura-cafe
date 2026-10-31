@@ -72,8 +72,8 @@ export function FarmScreen() {
     if (seed && kind === "open") {
       return { label: "調べる", hint: "土の中に種が埋まっている！", run: () => { a.showSeed(seed); } };
     }
-    if (kind === "watered") {
-      return { label: "見る", hint: "あなたが水やりした種だ。", run: () => toast("この種にはもう水やりしました。") };
+    if (seed && kind === "watered") {
+      return { label: "見る", hint: "あなたが水やりした種だ。", run: () => a.showWateredSeed(seed) };
     }
     if (kind === "full") {
       return { label: "見る", hint: "5人に水やりされて、すっかり育った。", run: () => toast("この種は5人に水やりされ、育ちきりました。") };

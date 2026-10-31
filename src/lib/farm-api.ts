@@ -93,6 +93,12 @@ export async function readSeedText(id: string): Promise<string> {
   return snap.exists() ? (snap.data().text as string) : "";
 }
 
+// 自分が水やりのときに送った手紙（送った本人は読める）
+export async function readMyLetter(seedId: string, uid: string): Promise<Letter | null> {
+  const snap = await getDoc(doc(db, "letters", `${seedId}_${uid}`));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Letter) : null;
+}
+
 /* ---------- 水やり（トランザクション） ---------- */
 export async function waterSeed(uid: string, name: string, seed: Seed, seedText: string, text: string) {
   const seedRef = doc(db, "seeds", seed.id);

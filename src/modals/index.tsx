@@ -10,7 +10,7 @@ import {
   Actions, Body, Btn, ErrorText, LinkBtn, Links, Paper, PaperInput, SectionLabel, Small, T, Tips, Title,
 } from "@/components/ui";
 import {
-  type CropDoc, type Letter, type Seed, blockUser, dateText, markRead, millis, readSeedText, reportLetter,
+  type CropDoc, type Letter, type Seed, blockUser, dateText, markRead, millis, readMyLetter, readSeedText, reportLetter,
   reportSeed, sayThanks, sowSeed, waterSeed,
 } from "@/lib/farm-api";
 import { CROPS, type Crop, MAX_WATERERS, cropById, randomCrop } from "@/lib/game";
@@ -39,6 +39,7 @@ export function useActions() {
     close: modal.close,
     showSow: (x: number, y: number) => modal.open(<SowModal x={x} y={y} />),
     showOwnSeed: (seed: Seed) => modal.open(<OwnSeedModal seed={seed} />),
+    showWateredSeed: (seed: Seed) => modal.open(<WateredSeedModal seed={seed} />),
     showSeed: async (seed: Seed) => {
       let text = "";
       try { text = await readSeedText(seed.id); } catch (e) { console.error(e); }
@@ -118,6 +119,34 @@ function OwnSeedModal({ seed }: { seed: Seed }) {
       <Title>あなたが蒔いた種</Title>
       <Paper text={text} />
       <Small>{status}</Small>
+      <Actions><Btn label="とじる" onPress={a.close} /></Actions>
+    </>
+  );
+}
+
+// 自分が水やりした種。種の文章と、自分が送った手紙を読み返せる
+function WateredSeedModal({ seed }: { seed: Seed }) {
+  const { uid, name, crops } = useFarm();
+  const a = useActions();
+  const [text, setText] = useState("読み込み中…");
+  const [letter, setLetter] = useState("読み込み中…");
+  useEffect(() => {
+    readSeedText(seed.id).then((t) => setText(t || "読み込めませんでした。")).catch(() => setText("読み込めませんでした。"));
+    readMyLetter(seed.id, uid)
+      .then((l) => setLetter(l ? l.text : "読み込めませんでした。"))
+      .catch(() => setLetter("読み込めませんでした。"));
+  }, [seed.id, uid]);
+  const crop = crops.find((c) => c.letterId === `${seed.id}_${uid}`);
+  return (
+    <>
+      <Title>{`${seed.ownerName}さんの種`}</Title>
+      <Paper text={text} />
+      <SectionLabel>あなたが送った手紙</SectionLabel>
+      <Paper text={letter} from={`${name}より`} />
+      {crop
+        ? <Body style={{ marginTop: 14 }}>{`${seed.ownerName}さんから「ありがとう」が届き、${cropById(crop.cropType).name}が実りました。`}</Body>
+        : null}
+      <Small>{`${seed.waterCount || 0}人が水やりしました（最大${MAX_WATERERS}人）。`}</Small>
       <Actions><Btn label="とじる" onPress={a.close} /></Actions>
     </>
   );
