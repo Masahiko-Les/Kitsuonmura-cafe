@@ -4,12 +4,14 @@ import { type LayoutChangeEvent, StyleSheet, View } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
 
 import type { Seed } from "@/lib/farm-api";
-import { COLS, type Dir, ROWS, TILE, tileAt } from "@/lib/game";
+import { COLS, type Dir, ROWS, TILE, VIEW_COLS, VIEW_ROWS, tileAt } from "@/lib/game";
 import { C } from "@/theme";
 
 export const MOVE_MS = 150;
-const W = COLS * TILE;
+const W = COLS * TILE; // マップ全体
 const H = ROWS * TILE;
+const VW = VIEW_COLS * TILE; // 画面に映す範囲
+const VH = VIEW_ROWS * TILE;
 
 export type SeedKind = "mine" | "mine-review" | "watered" | "full" | "open" | null;
 
@@ -144,13 +146,25 @@ function drawFullPlant(X: number, Y: number) {
 }
 
 /* ---------- 村人 ---------- */
+// 歩いている途中も含めた、村人の今の位置（マス単位）
+function playerPos(p: Player, t: number) {
+  if (!p.walking) return { fx: p.x, fy: p.y };
+  const k = Math.min(1, (t - p.moveStart) / MOVE_MS);
+  return { fx: p.fromX + (p.x - p.fromX) * k, fy: p.fromY + (p.y - p.fromY) * k };
+}
+
+// 村人が画面の中央に来るカメラ位置。マップの端からははみ出さない
+function camera(p: Player, t: number) {
+  const { fx, fy } = playerPos(p, t);
+  const clamp = (v: number, max: number) => Math.round(Math.min(Math.max(v, 0), max));
+  return {
+    x: clamp(fx * TILE + TILE / 2 - VW / 2, W - VW),
+    y: clamp(fy * TILE + TILE / 2 - VH / 2, H - VH),
+  };
+}
+
 function drawPlayer(p: Player, t: number) {
-  let fx = p.x, fy = p.y;
-  if (p.walking) {
-    const k = Math.min(1, (t - p.moveStart) / MOVE_MS);
-    fx = p.fromX + (p.x - p.fromX) * k;
-    fy = p.fromY + (p.y - p.fromY) * k;
-  }
+  const { fx, fy } = playerPos(p, t);
   const X = Math.round(fx * TILE), Y = Math.round(fy * TILE);
   rect(X + 3, Y + 14, 10, 2, "rgba(0,0,0,0.18)");
   // 足
@@ -215,9 +229,17 @@ function staticLayer(): SkPicture {
 function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
   return createPicture((canvas) => {
     cv = canvas;
+    const cam = camera(scene.player, t);
+    // 画面に入るマスの範囲（はしの半端なマスも含める）
+    const x0 = Math.floor(cam.x / TILE), x1 = Math.min(COLS - 1, Math.ceil((cam.x + VW) / TILE));
+    const y0 = Math.floor(cam.y / TILE), y1 = Math.min(ROWS - 1, Math.ceil((cam.y + VH) / TILE));
+    const inView = (x: number, y: number) => x >= x0 - 1 && x <= x1 && y >= y0 - 1 && y <= y1;
+
+    canvas.save();
+    canvas.translate(-cam.x, -cam.y);
     canvas.drawPicture(base);
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
         const c = tileAt(x, y);
         if (c === "~") drawWater(x * TILE, y * TILE, x, t);
         else if (c === "M") drawMailbox(x * TILE, y * TILE, x, y, scene.hasUnread);
@@ -225,6 +247,7 @@ function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
     }
     const { x: px, y: py } = scene.player;
     for (const s of scene.seeds) {
+      if (!inView(s.x, s.y)) continue;
       const X = s.x * TILE, Y = s.y * TILE;
       const kind = scene.kindOf(s);
       if (kind === "mine") drawSprout(X, Y, Math.min(5, s.waterCount || 0), false);
@@ -235,7 +258,8 @@ function frame(base: SkPicture, scene: Scene, t: number): SkPicture {
     }
     drawEffects(t);
     drawPlayer(scene.player, t);
-  }, { width: W, height: H });
+    canvas.restore();
+  }, { width: VW, height: VH });
 }
 
 export function FarmMap({ scene, paused }: { scene: RefObject<Scene>; paused: boolean }) {
@@ -254,7 +278,7 @@ export function FarmMap({ scene, paused }: { scene: RefObject<Scene>; paused: bo
     return () => cancelAnimationFrame(raf);
   }, [base, scene, picture, paused]);
 
-  const scale = width / W;
+  const scale = width / VW;
   return (
     <View
       style={s.screen}
@@ -263,12 +287,12 @@ export function FarmMap({ scene, paused }: { scene: RefObject<Scene>; paused: bo
       accessibilityRole="image"
     >
       {width > 0 ? (
-        <Canvas style={{ width, height: H * scale }}>
+        <Canvas style={{ width, height: VH * scale }}>
           <Group transform={[{ scale }]}>
             <Picture picture={picture} />
           </Group>
         </Canvas>
-      ) : <View style={{ aspectRatio: W / H }} />}
+      ) : <View style={{ aspectRatio: VW / VH }} />}
     </View>
   );
 }
