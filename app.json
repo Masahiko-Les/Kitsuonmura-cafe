@@ -8,7 +8,7 @@
     "scheme": "kitsuonfarm",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.kitsuonnojo.app",
       "supportsTablet": false,
       "infoPlist": {
@@ -37,7 +37,12 @@
         {
           "backgroundColor": "#2e3a2b",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#2e3a2b",
+            "image": "./assets/images/splash-icon.png"
+          }
         }
       ]
     ],

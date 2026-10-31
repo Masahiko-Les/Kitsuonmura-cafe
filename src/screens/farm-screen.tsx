@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { DPad } from "@/components/dpad";
 import { FarmMap, MOVE_MS, type Player, type Scene, type SeedKind } from "@/components/farm-map";
 import { useModal } from "@/components/modal-host";
 import { useToast } from "@/components/toast";
@@ -52,7 +53,7 @@ export function FarmScreen() {
   const action: Action = (() => {
     const [dx, dy] = DIRS[pos.dir];
     if (tileAt(pos.x + dx, pos.y + dy) === "M") {
-      return { label: "開く", hint: "郵便受けだ。Aで開く。", run: a.showMailbox };
+      return { label: "開く", hint: "郵便受けだ。", run: a.showMailbox };
     }
     const seed = seedAt(pos.x, pos.y);
     const kind = kindOf(seed);
@@ -96,9 +97,11 @@ export function FarmScreen() {
   /* ---------- 移動 ---------- */
   const modalOpen = useRef(modal.isOpen);
   useEffect(() => { modalOpen.current = modal.isOpen; }, [modal.isOpen]);
+  // 十字キーで押している方向。押しているあいだは歩き続ける
+  const heldDir = useRef<Dir | null>(null);
 
-  const tryMove = useCallback((dir: Dir) => {
-    if (modalOpen.current) return;
+  const tryMove = useCallback(function step(dir: Dir) {
+    if (modalOpen.current) { heldDir.current = null; return; }
     const p = sceneRef.current.player;
     if (p.walking) return;
     p.dir = dir;
@@ -111,8 +114,17 @@ export function FarmScreen() {
     p.walking = true;
     p.moveStart = performance.now();
     p.frame = (p.frame + 1) % 2;
-    setTimeout(() => { p.walking = false; setPos({ x: p.x, y: p.y, dir: p.dir }); }, MOVE_MS);
+    setTimeout(() => {
+      p.walking = false;
+      setPos({ x: p.x, y: p.y, dir: p.dir });
+      if (heldDir.current) step(heldDir.current);
+    }, MOVE_MS);
   }, []);
+
+  const onDirChange = useCallback((dir: Dir | null) => {
+    heldDir.current = dir;
+    if (dir && !sceneRef.current.player.walking) tryMove(dir);
+  }, [tryMove]);
 
   const pressA = () => {
     if (modal.isOpen) return;
@@ -135,12 +147,7 @@ export function FarmScreen() {
         <View style={s.hint}><T style={s.hintText} accessibilityLiveRegion="polite">{action.hint}</T></View>
 
         <View style={s.controls}>
-          <View style={s.dpad} accessibilityRole="none" accessibilityLabel="移動">
-            <Pad dir="up" label="上へ" glyph={"▲\uFE0E"} onMove={tryMove} />
-            <Pad dir="left" label="左へ" glyph={"◀\uFE0E"} onMove={tryMove} />
-            <Pad dir="right" label="右へ" glyph={"▶\uFE0E"} onMove={tryMove} />
-            <Pad dir="down" label="下へ" glyph={"▼\uFE0E"} onMove={tryMove} />
-          </View>
+          <DPad onDirChange={onDirChange} onStep={tryMove} />
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: !action.run }}
@@ -169,32 +176,6 @@ function HudBtn({ label, badge = 0, onPress }: { label: string; badge?: number; 
     </Pressable>
   );
 }
-
-// 押している間は歩き続ける
-function Pad({ dir, label, glyph, onMove }: { dir: Dir; label: string; glyph: string; onMove: (d: Dir) => void }) {
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stop = () => { if (timer.current) clearInterval(timer.current); timer.current = null; };
-  useEffect(() => stop, []);
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPressIn={() => { onMove(dir); stop(); timer.current = setInterval(() => onMove(dir), MOVE_MS + 20); }}
-      onPressOut={stop}
-      style={({ pressed }) => [s.pad, PAD_POS[dir], pressed && { backgroundColor: C.mossDeep }]}
-    >
-      <T style={s.padText}>{glyph}</T>
-    </Pressable>
-  );
-}
-
-const PAD = 60;
-const PAD_POS = StyleSheet.create({
-  up: { left: PAD, top: 0, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
-  left: { left: 0, top: PAD, borderTopLeftRadius: 8, borderBottomLeftRadius: 8 },
-  right: { left: PAD * 2, top: PAD, borderTopRightRadius: 8, borderBottomRightRadius: 8 },
-  down: { left: PAD, top: PAD * 2, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
-});
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.moss },
@@ -232,18 +213,6 @@ const s = StyleSheet.create({
   hint: { minHeight: 52, marginTop: 10, marginBottom: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: C.mossDeep, borderRadius: 6, justifyContent: "center" },
   hintText: { fontSize: 15, lineHeight: 22 },
   controls: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 },
-  dpad: { width: PAD * 3, height: PAD * 3 },
-  pad: {
-    position: "absolute",
-    width: PAD,
-    height: PAD,
-    backgroundColor: C.mossSoft,
-    borderColor: C.mossDeep,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  padText: { fontSize: 18, color: C.soft },
   aBtn: {
     width: 108,
     height: 108,
