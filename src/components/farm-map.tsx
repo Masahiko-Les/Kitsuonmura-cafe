@@ -178,62 +178,90 @@ function walkPhase(p: Player, t: number, moving: boolean) {
   return t < p.walkUntil || moving ? (1 + Math.floor((t - p.walkStart) / 115)) % 4 : -1;
 }
 
+// 主人公：頭の大きい2頭身。大きな麦わら帽子、茶色の髪、青い服、茶色のズボン。
+// 1マス（16ドット）の上に帽子が少しはみ出す（上から -2 〜 15 ドット）
 function drawPlayer(p: Player, t: number) {
   const { fx, fy, moving } = playerPos(p, t);
   const X = Math.round(fx * TILE), Y = Math.round(fy * TILE);
   const ph = walkPhase(p, t, moving);
   const step = ph === 1 || ph === 3;
   const y = Y + (step ? -1 : 0); // 足を出したコマで体が少し上がる
-  const skin = "#f2c9a0", shoe = "#4a3a2a", shoe2 = "#33281c", shirt = "#3f6fb5", shirt2 = "#5a8ad0", hair = "#6b4a2a";
+  const skin = "#f6cfa6", cheek = "#f2a08c", eye = "#2a2018";
+  const hair = "#7a4a2a", shirt = "#3f72c0", shirt2 = "#5a8ad8", pants = "#6b4a2e", shoe = "#3a2a1e";
+  const straw = "#efc75e", strawHi = "#f8dc84", strawLo = "#c99e3c", band = "#c8402f";
   const side = p.dir === "left" || p.dir === "right";
   const sgn = p.dir === "right" ? 1 : -1;
   rect(X + 3, Y + 15, 10, 1, "rgba(0,0,0,0.22)");
-  // 足
+
+  // 足（ズボンと靴）
+  const leg = (lx: number, lift: number) => {
+    rect(X + lx, Y + 13 - lift, 2, 1, pants);
+    rect(X + lx, Y + 14 - lift, 2, 1, shoe);
+  };
   if (side) {
-    if (!step) {
-      rect(X + 6, Y + 13, 2, 2, shoe2);
-      rect(X + 8, Y + 13, 2, 2, shoe);
-    } else {
+    if (!step) { leg(6, 0); leg(8, 0); }
+    else {
       const f = ph === 1 ? 1 : -1; // 前に出る足を入れ替える
-      rect(X + 7 - 2 * sgn * f, Y + 13, 2, 2, shoe2); // 奥の足
-      rect(X + 7 + 2 * sgn * f, Y + 13, 2, 2, shoe); // 手前の足
-      rect(X + 7, Y + 12, 2, 1, shoe);
+      leg(7 - 2 * sgn * f, 0);
+      leg(7 + 2 * sgn * f, 0);
     }
   } else {
-    rect(X + 5, Y + 13 - (ph === 3 ? 1 : 0), 2, 2, shoe);
-    rect(X + 9, Y + 13 - (ph === 1 ? 1 : 0), 2, 2, shoe);
+    leg(5, ph === 3 ? 1 : 0);
+    leg(9, ph === 1 ? 1 : 0);
   }
-  // 体
-  rect(X + 4, y + 8, 8, 5, shirt);
-  rect(X + 4, y + 8, 8, 1, shirt2);
+
+  // 体（小さめ）
+  rect(X + 4, y + 10, 8, 3, shirt);
+  rect(X + 4, y + 10, 8, 1, shirt2);
   // 腕
   if (side) {
     const sw = !step ? 0 : (ph === 1 ? 2 : -2) * sgn; // 前後に振る
-    rect(X + 7 + sw, y + 9, 2, 3, shirt2);
-    rect(X + 7 + sw + Math.sign(sw), y + 12, 2, 1, skin);
+    rect(X + 7 + sw, y + 10, 2, 2, shirt2);
+    rect(X + 7 + sw, y + 12, 2, 1, skin);
   } else {
     const la = ph === 1 ? 1 : ph === 3 ? -1 : 0; // 左右の腕を交互に
-    rect(X + 3, y + 9 + la, 1, 3, skin);
-    rect(X + 12, y + 9 - la, 1, 3, skin);
+    rect(X + 3, y + 10 + la, 1, 2, shirt);
+    rect(X + 3, y + 12 + la, 1, 1, skin);
+    rect(X + 12, y + 10 - la, 1, 2, shirt);
+    rect(X + 12, y + 12 - la, 1, 1, skin);
   }
-  // 顔と麦わら帽子
-  rect(X + 5, y + 4, 6, 4, skin);
-  rect(X + 4, y + 1, 8, 3, "#e2c15a");
-  rect(X + 2, y + 3, 12, 1, "#c9a43c");
-  rect(X + 4, y + 3, 8, 1, "#c0392b");
+
+  // 頭（大きめ。帽子の下から顔がのぞく）
+  rect(X + 3, y + 4, 10, 5, skin);
+  rect(X + 4, y + 9, 8, 1, skin);
   if (p.dir === "up") {
-    rect(X + 5, y + 4, 6, 3, hair);
+    rect(X + 3, y + 4, 10, 5, hair);
+    rect(X + 4, y + 9, 8, 1, hair);
   } else if (p.dir === "down") {
-    rect(X + 6, y + 5, 1, 1, "#2a2018");
-    rect(X + 9, y + 5, 1, 1, "#2a2018");
-    rect(X + 7, y + 7, 2, 1, "#e0a080");
+    rect(X + 3, y + 4, 10, 1, hair); // 前髪
+    rect(X + 3, y + 5, 1, 3, hair);
+    rect(X + 12, y + 5, 1, 3, hair);
+    rect(X + 5, y + 6, 1, 2, eye);
+    rect(X + 10, y + 6, 1, 2, eye);
+    rect(X + 4, y + 8, 1, 1, cheek);
+    rect(X + 11, y + 8, 1, 1, cheek);
   } else if (p.dir === "left") {
-    rect(X + 5, y + 5, 1, 1, "#2a2018");
-    rect(X + 9, y + 4, 2, 3, hair);
+    rect(X + 8, y + 4, 5, 5, hair);
+    rect(X + 8, y + 9, 4, 1, hair);
+    rect(X + 3, y + 4, 5, 1, hair);
+    rect(X + 4, y + 6, 1, 2, eye);
+    rect(X + 5, y + 8, 1, 1, cheek);
   } else {
-    rect(X + 10, y + 5, 1, 1, "#2a2018");
-    rect(X + 5, y + 4, 2, 3, hair);
+    rect(X + 3, y + 4, 5, 5, hair);
+    rect(X + 4, y + 9, 4, 1, hair);
+    rect(X + 8, y + 4, 5, 1, hair);
+    rect(X + 11, y + 6, 1, 2, eye);
+    rect(X + 10, y + 8, 1, 1, cheek);
   }
+
+  // 麦わら帽子（つばを大きく）
+  rect(X + 5, y - 2, 6, 1, straw);
+  rect(X + 4, y - 1, 8, 3, straw);
+  rect(X + 6, y - 2, 3, 1, strawHi);
+  rect(X + 4, y + 1, 8, 1, band);
+  rect(X + 1, y + 2, 14, 2, straw);
+  rect(X + 1, y + 2, 14, 1, strawHi);
+  rect(X + 2, y + 3, 12, 1, strawLo);
 }
 
 function drawEffects(t: number) {
