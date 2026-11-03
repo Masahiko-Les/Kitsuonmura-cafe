@@ -178,7 +178,7 @@ export function FarmScreen() {
       return { label: "…", hint: ROOM_IDLE[room], run: null };
     }
     if (tileAt(pos.x + dx, pos.y + dy) === "N") {
-      return { label: "読む", hint: "A で看板を読む", run: () => a.showHelp(true) };
+      return { label: "読む", hint: "看板を読む", run: () => a.showHelp(true) };
     }
     if (tileAt(pos.x + dx, pos.y + dy) === "~") {
       return { label: "…", hint: "小さな池だ。水面がきらきらしている。", run: null };
@@ -195,16 +195,16 @@ export function FarmScreen() {
     // できたことの種（自分で蒔いて、自分で水やりする）
     const sd = doneSeedAt(done.seeds, pos.x, pos.y);
     if (sd) {
-      if (sd.bloomed) return { label: "読む", hint: `A で思い出を読む（${FLOWERS[sd.flower].name}）`, run: () => a.showMemory(sd.id) };
+      if (sd.bloomed) return { label: "読む", hint: `思い出を読む（${FLOWERS[sd.flower].name}）`, run: () => a.showMemory(sd.id) };
       if (canWater(sd, done.today)) {
-        return { label: "水やり", hint: `A で種を見る・水やりする（${sd.waters.length}/${MAX_WATER}）`, run: () => a.showDoneSeed(sd.id) };
+        return { label: "水やり", hint: `種を見る・水やりする（${sd.waters.length}/${MAX_WATER}）`, run: () => a.showDoneSeed(sd.id) };
       }
-      return { label: "見る", hint: `A で種を見る（今日は水やり済み・${sd.waters.length}/${MAX_WATER}）`, run: () => a.showDoneSeed(sd.id) };
+      return { label: "見る", hint: `種を見る（今日は水やり済み・${sd.waters.length}/${MAX_WATER}）`, run: () => a.showDoneSeed(sd.id) };
     }
     const here = tileAt(pos.x, pos.y);
     if (here === "P") return { label: "…", hint: "道には種を蒔けません。草地か畑へ行こう。", run: null };
     if (plantable(pos.x, pos.y)) {
-      const hint = here === "," ? "A でこの畑に「できたこと」を蒔く" : "A でここに「できたこと」を蒔く";
+      const hint = here === "," ? "この畑に種を蒔く" : "ここに種を蒔く";
       return { label: "蒔く", hint, run: () => a.showPlant(pos.x, pos.y) };
     }
     return { label: "…", hint: "", run: null };
@@ -263,7 +263,8 @@ export function FarmScreen() {
             onPress={pressA}
             style={({ pressed }) => [s.aBtn, pressed && s.aBtnPressed, !canPress && s.aBtnOff]}
           >
-            <T style={s.aText}>{action.label}</T>
+            {/* できることがないときは何も出さない */}
+            <T style={s.aText}>{action.label === "…" ? "" : action.label}</T>
           </Pressable>
         </View>
       </View>
