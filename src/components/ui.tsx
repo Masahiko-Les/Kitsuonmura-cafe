@@ -4,7 +4,7 @@ import {
 } from "react-native";
 
 import { MAX_CHARS, MAX_LINES } from "@/lib/game";
-import { measure } from "@/lib/text";
+import { countContent, measure } from "@/lib/text";
 import { C, F, LINE_H } from "@/theme";
 
 /* ---------- 文字 ---------- */
@@ -98,11 +98,12 @@ export function Paper({ text, from, minLines = 3 }: { text: string; from?: strin
 }
 
 // 書くための便箋。10行ぶんの罫線を引いておく。
-export function PaperInput({ placeholder, onChangeText, initial = "" }: {
-  placeholder: string; onChangeText: (t: string) => void; initial?: string;
+export function PaperInput({ placeholder, onChangeText, initial = "", minChars = 0 }: {
+  placeholder: string; onChangeText: (t: string) => void; initial?: string; minChars?: number;
 }) {
   const [text, setText] = useState(initial);
   const { lines, chars } = measure(text);
+  const short = minChars - countContent(text);
   const over = lines > MAX_LINES || chars > MAX_CHARS;
   return (
     <>
@@ -122,7 +123,7 @@ export function PaperInput({ placeholder, onChangeText, initial = "" }: {
         />
       </View>
       <T style={[s.counter, over && { color: C.over }]}>
-        {`${lines} / ${MAX_LINES}行　${chars} / ${MAX_CHARS}字`}
+        {`${lines} / ${MAX_LINES}行　${chars} / ${MAX_CHARS}字${short > 0 ? `　（あと${short}字）` : ""}`}
       </T>
     </>
   );

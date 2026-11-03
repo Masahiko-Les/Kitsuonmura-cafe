@@ -13,7 +13,7 @@ import {
   type CropDoc, type Letter, type Seed, blockUser, dateText, markRead, millis, readMyLetter, readSeedText, reportLetter,
   reportSeed, sayThanks, sowSeed, waterSeed,
 } from "@/lib/farm-api";
-import { CROPS, type Crop, MAX_WATERERS, cropById, randomCrop } from "@/lib/game";
+import { CROPS, type Crop, MAX_WATERERS, SEED_MIN_CHARS, cropById, randomCrop } from "@/lib/game";
 import { SUPPORT_LINES, SUPPORT_NOTE } from "@/lib/safety";
 import { checkText } from "@/lib/text";
 import { useFarm } from "@/state/farm";
@@ -69,7 +69,7 @@ function SowModal({ x, y }: { x: number; y: number }) {
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    const res = checkText(text.current);
+    const res = checkText(text.current, SEED_MIN_CHARS);
     if (res.error) { setErr(res.error); return; }
     setBusy(true);
     setErr("");
@@ -95,7 +95,7 @@ function SowModal({ x, y }: { x: number; y: number }) {
     <>
       <Title>種を蒔く</Title>
       <Body>書いた苦労は、この場所に種として埋まります。見つけた人だけが読めます。</Body>
-      <PaperInput placeholder="吃音の苦労を、10行以内で書いてみよう" onChangeText={(t) => { text.current = t; }} />
+      <PaperInput placeholder="吃音の苦労を、20字以上・10行以内で書いてみよう" minChars={SEED_MIN_CHARS} onChangeText={(t) => { text.current = t; }} />
       <ErrorText>{err}</ErrorText>
       <Actions>
         <Btn kind="quiet" label="やめる" onPress={a.close} />

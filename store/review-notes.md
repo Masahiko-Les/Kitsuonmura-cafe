@@ -21,7 +21,7 @@ No account or demo login is needed. The app uses Firebase anonymous authenticati
   - One step up and one step left of the start
   - One step up and two steps right
   - One step down and two steps left
-- Stand on a glowing seed and press A ("調べる") to read it. Tap "はい" (Yes) to water it, write a letter, and tap "水やりする" to send.
+- Stand on a glowing seed and press the A button ("水やり") to read it. Tap "はい" (Yes), write a letter, and tap "水やりする" to send it.
 - To sow your own seed, stand on a grass or field tile and press A ("蒔く").
 - During the review period we check the sample account's mailbox and tap "Thank you" on your letter. You will then receive a crop and a thank-you message in the mailbox (郵便受け, top right). Crops can be reread in the memory book (思い出帳).
 
@@ -57,7 +57,7 @@ The UI is in Japanese only. The app is distributed in Japan. It contains no ads,
   - スタートから上に1マス・左に1マス
   - 上に1マス・右に2マス
   - 下に1マス・左に2マス
-- 光る種の上でAボタン（「調べる」）を押して読み、「はい」→ 手紙を書いて「水やりする」で送ってください。
+- 光る種の上でAボタン（「水やり」）を押して読み、「はい」→ 手紙を書いて「水やりする」で送ってください。
 - 自分の種は、草や畑のマスでAボタン（「蒔く」）を押すと蒔けます。
 - 審査期間中は、運営が見本の種の郵便受けを確認し、届いた手紙に「ありがとう」を押します。すると作物と、お礼のメッセージが郵便受け（右上）に届きます。作物は思い出帳で読み返せます。
 
