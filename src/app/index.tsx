@@ -2,7 +2,7 @@ import { FarmScreen } from "@/screens/farm-screen";
 import { LoadingScreen, NameScreen, TermsAgreeScreen } from "@/screens/onboarding";
 import { useFarm } from "@/state/farm";
 
-// 名前登録 → 規約同意 → 農場マップ
+// 名前登録 → 規約同意 → 村のマップ
 export default function Index() {
   const { phase, errorMessage } = useFarm();
   if (phase === "error") return <LoadingScreen message={errorMessage} />;

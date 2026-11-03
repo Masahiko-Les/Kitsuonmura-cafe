@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Skia の Web 用エンジン（npm install のときに自動でコピーされる）
+public/canvaskit.wasm

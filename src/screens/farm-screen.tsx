@@ -1,98 +1,106 @@
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { AppState, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { FarmMap, type Player, type Scene, type SeedKind, playerPos } from "@/components/farm-map";
+import { FarmMap, type PlantVis, type Player, type Scene, playerPos } from "@/components/farm-map";
+import { stageOf } from "@/components/flower-art";
 import { useModal } from "@/components/modal-host";
 import { SwipeArea } from "@/components/swipe-walk";
-import { useToast } from "@/components/toast";
 import { T } from "@/components/ui";
-import type { Seed } from "@/lib/farm-api";
+import { FLOWERS, MAX_WATER } from "@/lib/dekitakoto/constants";
+import { type DoneSeed, canWater, doneSeedAt, plantable, refreshToday, useDone } from "@/lib/dekitakoto/store";
 import {
-  type Area, BUILDINGS, DIRS, type Dir, MAX_WATERERS, ROOM_ENTRY, ROOM_WALKABLE, SOWABLE, WALKABLE, buildingAt, keyOf, roomTileAt, tileAt,
+  type Area, BUILDINGS, CAFE_GUESTS, DIRS, type Dir, ROOMS, type RoomId, START, WALKABLE, buildingAt, keyOf, roomTileAt, tileAt,
 } from "@/lib/game";
-import { useActions } from "@/modals";
+import { animalName } from "@/lib/cafe";
+import { setGoToSeed, useActions } from "@/modals";
 import { useFarm } from "@/state/farm";
 import { C } from "@/theme";
 
-// go は家への出入り（描画ループの状態を変えるので、run とは分けて pressA で扱う）
-type Action = { label: string; hint: string; run: (() => void) | null; go?: "enter" | "leave" };
+// go は建物への出入りと、カフェの丸椅子に座ること（描画ループの状態を変えるので、run とは分けて pressA で扱う）
+type Action = { label: string; hint: string; run: (() => void) | null; go?: RoomId | "leave" | "sit"; seat?: { x: number; y: number } };
 
-const HOUSE = BUILDINGS.find((b) => b.id === "house")!;
-const ROOM_HINTS: Record<string, string> = {
-  B: "ふかふかのベッドだ。",
-  L: "木のテーブルだ。",
-  K: "本がたくさん並んでいる。",
+const ROOM_HINTS: Record<RoomId, Record<string, string>> = {
+  house: {
+    B: "ふかふかのベッドだ。",
+    L: "木のテーブルだ。",
+    K: "本がたくさん並んでいる。",
+  },
+  cafe: {
+    "#": "棚にカップがきれいに並んでいる。",
+    b: "カウンターの向こうだ。",
+    P: "よく手入れされた鉢植えだ。",
+  },
 };
+const ROOM_IDLE: Record<RoomId, string> = {
+  house: "自分の家だ。ほっとする。",
+  cafe: "コーヒーの香りがする。静かで、あたたかい。",
+};
+const doorOf = (id: RoomId) => BUILDINGS.find((b) => b.id === id)!.door;
+const isRoom = (a: Area): a is RoomId => a !== "farm";
 
 export function FarmScreen() {
   const farm = useFarm();
   const modal = useModal();
-  const toast = useToast();
+  const done = useDone();
   const a = useActions();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
+  // カフェの会話画面などに移っているあいだは、マップの描画を止める
+  const [focused, setFocused] = useState(true);
+  useFocusEffect(useCallback(() => {
+    setFocused(true);
+    return () => setFocused(false);
+  }, []));
 
   // 立ち位置と向き。ヒントとAボタンの表示に使う
-  const [pos, setPos] = useState({ x: 8, y: 9, dir: "down" as Dir, area: "farm" as Area });
+  const [pos, setPos] = useState({ x: START.x, y: START.y, dir: "up" as Dir, area: "farm" as Area });
 
-  /* ---------- 種の判定 ---------- */
-  const seedAt = useCallback((x: number, y: number): Seed | null => {
-    const k = keyOf(x, y);
-    if (farm.mySeeds.has(k)) return farm.mySeeds.get(k)!;
-    if (farm.hiddenSeeds.has(k)) return null;
-    return farm.publicSeeds.get(k) ?? null;
-  }, [farm.mySeeds, farm.publicSeeds, farm.hiddenSeeds]);
-
-  const kindOf = useCallback((seed: Seed | null): SeedKind => {
-    if (!seed) return null;
-    if (seed.ownerUid === farm.uid) return seed.status === "review" ? "mine-review" : "mine";
-    if ((seed.waterers || []).includes(farm.uid)) return "watered";
-    if ((seed.waterCount || 0) >= MAX_WATERERS) return "full";
-    return "open";
-  }, [farm.uid]);
-
-  const nearOpenSeed = useMemo(() => {
-    for (const s of farm.publicSeeds.values()) {
-      if (kindOf(s) !== "open" || farm.hiddenSeeds.has(s.id)) continue;
-      if (Math.abs(s.x - pos.x) + Math.abs(s.y - pos.y) <= 2) return true;
-    }
-    return false;
-  }, [farm.publicSeeds, farm.hiddenSeeds, kindOf, pos.x, pos.y]);
+  /* ---------- できたことの種 ---------- */
+  // 日付が変わったら、水やりできる種を更新する（アプリに戻ってきたときと、1分ごと）
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") refreshToday(); });
+    const timer = setInterval(refreshToday, 60000);
+    return () => { sub.remove(); clearInterval(timer); };
+  }, []);
 
   /* ---------- 描画ループに渡すもの ---------- */
-  const visibleSeeds = useMemo(() => {
-    const m = new Map<string, Seed>();
-    for (const s of farm.publicSeeds.values()) if (!farm.hiddenSeeds.has(s.id)) m.set(s.id, s);
-    for (const s of farm.mySeeds.values()) m.set(s.id, s);
-    return [...m.values()];
-  }, [farm.publicSeeds, farm.mySeeds, farm.hiddenSeeds]);
+  const plants = useMemo<PlantVis[]>(() => done.seeds.map((sd) => ({
+    x: sd.x, y: sd.y, stage: stageOf(sd), flower: sd.flower, drop: canWater(sd, done.today),
+  })), [done.seeds, done.today]);
   const sceneRef = useRef<Scene>({
     area: "farm",
-    player: { x: 8, y: 9, dir: "down", fromX: 8, fromY: 9, moveStart: 0, walkStart: 0, walkUntil: 0 } satisfies Player,
-    seeds: [],
-    kindOf: () => null,
-    hasUnread: false,
+    player: { x: START.x, y: START.y, dir: "up", fromX: START.x, fromY: START.y, moveStart: 0, walkStart: 0, walkUntil: 0 } satisfies Player,
+    plants: [],
   });
-  const hasUnread = farm.unreadCount > 0;
   useEffect(() => {
-    Object.assign(sceneRef.current, { seeds: visibleSeeds, kindOf, hasUnread });
-  }, [visibleSeeds, kindOf, hasUnread]);
+    sceneRef.current.plants = plants;
+  }, [plants]);
 
   /* ---------- 移動 ---------- */
   const modalOpen = useRef(modal.isOpen);
   useEffect(() => { modalOpen.current = modal.isOpen; }, [modal.isOpen]);
 
-  // 農場と家の中を行き来する。歩かずに、その場に立たせる
+  // 村と建物の中を行き来する。歩かずに、その場に立たせる
   const warp = useCallback((area: Area, x: number, y: number, dir: Dir) => {
     const sc = sceneRef.current;
     sc.area = area;
     Object.assign(sc.player, { x, y, dir, fromX: x, fromY: y, moveStart: 0, walkUntil: 0 });
     setPos({ x, y, dir, area });
   }, []);
-  const enterHouse = useCallback(() => warp("house", ROOM_ENTRY.x, ROOM_ENTRY.y, "up"), [warp]);
-  const leaveHouse = useCallback(() => warp("farm", HOUSE.door.x, HOUSE.door.y + 1, "down"), [warp]);
+  const enterRoom = useCallback((id: RoomId) => warp(id, ROOMS[id].entry.x, ROOMS[id].entry.y, "up"), [warp]);
+  // 思い出帳の「育てている種」から、その種の上へ移る（建物の中にいても外に出る）
+  useEffect(() => {
+    setGoToSeed((sd: DoneSeed) => warp("farm", sd.x, sd.y, "down"));
+    return () => setGoToSeed(null);
+  }, [warp]);
+  const leaveRoom = useCallback(() => {
+    const id = sceneRef.current.area;
+    if (!isRoom(id)) return;
+    const door = doorOf(id);
+    warp("farm", door.x, door.y + 1, "down");
+  }, [warp]);
 
   // 1マス進む。歩いている途中でも、今いる場所から次のマスへ向かい直す
   const move = useCallback((dir: Dir) => {
@@ -104,13 +112,16 @@ export function FarmScreen() {
     const [dx, dy] = DIRS[dir];
     const nx = p.x + dx;
     const ny = p.y + dy;
-    if (sc.area === "house") {
+    const area = sc.area;
+    if (isRoom(area)) {
       // 出入り口へ歩くと外に出る
-      if (roomTileAt(nx, ny) === "E") { leaveHouse(); return; }
-      if (!ROOM_WALKABLE.has(roomTileAt(nx, ny))) { setPos({ x: p.x, y: p.y, dir, area: "house" }); return; }
+      const c = roomTileAt(area, nx, ny);
+      if (c === "E") { leaveRoom(); return; }
+      if (!ROOMS[area].walkable.has(c)) { setPos({ x: p.x, y: p.y, dir, area }); return; }
     } else {
-      // 家の扉へ歩くと中に入る
-      if (nx === HOUSE.door.x && ny === HOUSE.door.y) { enterHouse(); return; }
+      // 入れる建物の扉へ歩くと中に入る
+      const b = buildingAt(nx, ny);
+      if (b && b.enterable && b.door.x === nx && b.door.y === ny) { enterRoom(b.id as RoomId); return; }
       if (!WALKABLE.has(tileAt(nx, ny))) { setPos({ x: p.x, y: p.y, dir, area: "farm" }); return; }
     }
     const { fx, fy } = playerPos(p, now);
@@ -120,65 +131,96 @@ export function FarmScreen() {
     if (now > p.walkUntil) p.walkStart = now;
     p.walkUntil = now + 230;
     setPos({ x: nx, y: ny, dir, area: sc.area });
-  }, [enterHouse, leaveHouse]);
+  }, [enterRoom, leaveRoom]);
 
   /* ---------- ヒントとAボタン ---------- */
+  const openCafe = () => router.push("/cafe");
   const action: Action = (() => {
     const [dx, dy] = DIRS[pos.dir];
-    if (pos.area === "house") {
-      const front = roomTileAt(pos.x + dx, pos.y + dy);
-      if (ROOM_HINTS[front]) return { label: "…", hint: ROOM_HINTS[front], run: null };
+    if (isRoom(pos.area)) {
+      const room = pos.area;
+      const fx = pos.x + dx, fy = pos.y + dy;
+      const front = roomTileAt(room, fx, fy);
       if (front === "E") return { label: "出る", hint: "外に出られる。", run: null, go: "leave" };
-      return { label: "…", hint: "自分の家だ。ほっとする。", run: null };
+      if (room === "cafe") {
+        const seated = roomTileAt("cafe", pos.x, pos.y) === "s";
+        const guestName = () => {
+          const g = CAFE_GUESTS[keyOf(fx, fy)];
+          return g ? `${animalName(g)}の村人` : "村人";
+        };
+        if (seated && front === "C") {
+          return { label: "話す", hint: "マスター「いらっしゃい。今日は、どんなお話をしましょうか」", run: openCafe };
+        }
+        if (seated) {
+          return { label: "話す", hint: "カウンター席に座っている。隣の村人も、静かにカップを傾けている。", run: openCafe };
+        }
+        if (front === "C" || front === "O") {
+          return { label: "…", hint: "マスター「どうぞ、カウンターの空いている席へ」", run: null };
+        }
+        if (front === "s") {
+          // 空いている丸椅子に座る。両隣の村人をヒントで伝える
+          const near = [CAFE_GUESTS[keyOf(fx - 1, fy)], CAFE_GUESTS[keyOf(fx + 1, fy)]].filter(Boolean).map((g) => animalName(g!));
+          const side = near.length ? `隣には${near.join("と")}の村人が座っている。` : "";
+          return {
+            label: "座る",
+            hint: `カウンターの席が空いている。${side}`,
+            run: null,
+            go: "sit",
+            seat: { x: fx, y: fy },
+          };
+        }
+        if (front === "g") return { label: "…", hint: `${guestName()}が、カウンターでくつろいでいる。`, run: null };
+        if (front === "a") return { label: "…", hint: `${guestName()}が、静かにカップを傾けている。`, run: null };
+        if (front === "T") return { label: "…", hint: "テーブル席は埋まっているようだ。カウンターに座ろう。", run: null };
+      }
+      const h = ROOM_HINTS[room][front];
+      if (h) return { label: "…", hint: h, run: null };
+      return { label: "…", hint: ROOM_IDLE[room], run: null };
     }
-    if (tileAt(pos.x + dx, pos.y + dy) === "M") {
-      return { label: "開く", hint: "郵便受けだ。", run: a.showMailbox };
+    if (tileAt(pos.x + dx, pos.y + dy) === "N") {
+      return { label: "読む", hint: "A で看板を読む", run: () => a.showHelp(true) };
     }
-    if (tileAt(pos.x + dx, pos.y + dy) === "W") {
-      return { label: "…", hint: "風が強すぎて危険だ。これ以上進めない。", run: null };
-    }
-    if (tileAt(pos.x + dx, pos.y + dy) === "V") {
-      return { label: "…", hint: "船が停まっている。", run: null };
+    if (tileAt(pos.x + dx, pos.y + dy) === "~") {
+      return { label: "…", hint: "小さな池だ。水面がきらきらしている。", run: null };
     }
     const building = buildingAt(pos.x + dx, pos.y + dy);
-    if (building === HOUSE && HOUSE.door.x === pos.x + dx && HOUSE.door.y === pos.y + dy) {
-      return { label: "入る", hint: "自分の家だ。", run: null, go: "enter" };
+    if (building && building.enterable && building.door.x === pos.x + dx && building.door.y === pos.y + dy) {
+      const hint = building.id === "house" ? "自分の家だ。" : `${building.name}の入り口だ。いい香りがする。`;
+      return { label: "入る", hint, run: null, go: building.id as RoomId };
     }
     if (building) {
       const atDoor = building.door.x === pos.x + dx && building.door.y === pos.y + dy;
       return { label: "…", hint: atDoor ? `${building.name}の入り口だ。今はまだ入れない。` : `${building.name}だ。`, run: null };
     }
-    const seed = seedAt(pos.x, pos.y);
-    const kind = kindOf(seed);
-    if (seed && (kind === "mine" || kind === "mine-review")) {
-      return { label: "見る", hint: "あなたが蒔いた種だ。", run: () => a.showOwnSeed(seed) };
+    // できたことの種（自分で蒔いて、自分で水やりする）
+    const sd = doneSeedAt(done.seeds, pos.x, pos.y);
+    if (sd) {
+      if (sd.bloomed) return { label: "読む", hint: `A で思い出を読む（${FLOWERS[sd.flower].name}）`, run: () => a.showMemory(sd.id) };
+      if (canWater(sd, done.today)) {
+        return { label: "水やり", hint: `A で種を見る・水やりする（${sd.waters.length}/${MAX_WATER}）`, run: () => a.showDoneSeed(sd.id) };
+      }
+      return { label: "見る", hint: `A で種を見る（今日は水やり済み・${sd.waters.length}/${MAX_WATER}）`, run: () => a.showDoneSeed(sd.id) };
     }
-    if (seed && kind === "open") {
-      return { label: "水やり", hint: "土の中に種が埋まっている！", run: () => { a.showSeed(seed); } };
+    const here = tileAt(pos.x, pos.y);
+    if (here === "P") return { label: "…", hint: "道には種を蒔けません。草地か畑へ行こう。", run: null };
+    if (plantable(pos.x, pos.y)) {
+      const hint = here === "," ? "A でこの畑に「できたこと」を蒔く" : "A でここに「できたこと」を蒔く";
+      return { label: "蒔く", hint, run: () => a.showPlant(pos.x, pos.y) };
     }
-    if (seed && kind === "watered") {
-      return { label: "見る", hint: "あなたが水やりした種だ。", run: () => a.showWateredSeed(seed) };
-    }
-    if (kind === "full") {
-      return { label: "見る", hint: "5人に水やりされて、すっかり育った。", run: () => toast("この種は5人に水やりされ、育ちきりました。") };
-    }
-    if (tileAt(pos.x, pos.y) === "D") {
-      return { label: "…", hint: "砂漠だ。ここには種を蒔けない。", run: null };
-    }
-    if (SOWABLE.has(tileAt(pos.x, pos.y))) {
-      const near = nearOpenSeed ? "近くに種の気配がする…　" : "";
-      return { label: "蒔く", hint: `${near}ここに種を蒔ける。`, run: () => a.showSow(pos.x, pos.y) };
-    }
-    return { label: "…", hint: nearOpenSeed ? "近くに種の気配がする…" : "道の上には種を蒔けない。", run: null };
+    return { label: "…", hint: "", run: null };
   })();
 
   const canPress = !!action.run || !!action.go;
   const pressA = () => {
     if (modal.isOpen) return;
-    if (action.go === "enter") enterHouse();
-    else if (action.go === "leave") leaveHouse();
+    if (action.go === "sit" && action.seat) { warp("cafe", action.seat.x, action.seat.y, "up"); openCafe(); }
+    else if (action.go === "leave") leaveRoom();
+    else if (action.go && action.go !== "sit") enterRoom(action.go);
     else action.run?.();
   };
+
+  const bloomN = done.seeds.filter((v) => v.bloomed).length;
+  const waterN = done.seeds.filter((v) => canWater(v, done.today)).length;
 
   // 村人は、上の帯と操作部のあいだの真ん中に置く
   const topH = insets.top + HUD_H;
@@ -188,15 +230,21 @@ export function FarmScreen() {
   return (
     <View style={s.root}>
       <SwipeArea onMove={move}>
-        <FarmMap scene={sceneRef} paused={modal.isOpen} focusY={focusY} />
+        <FarmMap scene={sceneRef} paused={modal.isOpen || !focused} focusY={focusY} />
       </SwipeArea>
 
       <View style={[s.hud, { paddingTop: insets.top + 8, paddingLeft: insets.left + 12, paddingRight: insets.right + 12 }]}>
-        <T style={s.villager} numberOfLines={1}>{`${farm.name}さん`}</T>
-        <View style={s.hudActions}>
-          <HudBtn label="郵便受け" badge={farm.unreadCount} onPress={a.showMailbox} />
-          <HudBtn label="思い出帳" onPress={a.showBook} />
-          <HudBtn label="設定" onPress={() => router.push("/settings")} />
+        <View style={s.hudRow}>
+          <T style={s.villager} numberOfLines={1}>{`${farm.name}さん`}</T>
+          <View style={s.hudActions}>
+            <HudBtn label="📖 思い出帳" onPress={() => a.showBook()} />
+            <HudBtn label="設定" onPress={() => router.push("/settings")} />
+          </View>
+        </View>
+        <View style={s.stats} pointerEvents="none">
+          <T style={s.stat}>{`🌸 咲いた花 ${bloomN}`}</T>
+          <T style={s.stat}>{`🌱 育てている種 ${done.seeds.length - bloomN}`}</T>
+          <T style={s.stat}>{`💧 今日水やりできる種 ${waterN}`}</T>
         </View>
       </View>
 
@@ -237,7 +285,7 @@ function HudBtn({ label, badge = 0, onPress }: { label: string; badge?: number; 
   );
 }
 
-const HUD_H = 52; // 上の帯（ステータスバーを除く）
+const HUD_H = 74; // 上の帯（ステータスバーを除く）
 const GAP = 8;
 const BOTTOM_PAD = 12;
 const A_SIZE = 84;
@@ -249,13 +297,12 @@ const s = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    paddingBottom: 8,
+    paddingBottom: 6,
     backgroundColor: "rgba(31,39,29,0.78)",
   },
+  hudRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  stats: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, marginTop: 6 },
+  stat: { fontSize: 12, color: C.soft },
   villager: { fontSize: 15, color: C.leaf, flexShrink: 1 },
   hudActions: { flexDirection: "row", gap: 6, flexShrink: 0 },
   hudBtn: {

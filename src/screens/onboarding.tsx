@@ -54,8 +54,8 @@ export function NameScreen() {
 
   return (
     <Frame>
-      <Title>ようこそ、吃音農場へ</Title>
-      <Body>この農園での呼び名を決めてください。ほかの村人にはこの名前だけが見えます。本名やSNSの名前は使わないでください。</Body>
+      <Title>ようこそ、吃音村へ</Title>
+      <Body>この村での呼び名を決めてください。ほかの村人にはこの名前だけが見えます。本名やSNSの名前は使わないでください。</Body>
       <TextInput
         style={s.nameInput}
         maxLength={NAME_MAX}
@@ -110,7 +110,7 @@ export function TermsAgreeScreen() {
   return (
     <Frame>
       <Title>利用規約とガイドライン</Title>
-      <Body>農場に入る前に、読んでください。</Body>
+      <Body>村に入る前に、読んでください。</Body>
       <TermsBody />
       <Pressable
         style={s.check}
@@ -123,7 +123,7 @@ export function TermsAgreeScreen() {
       </Pressable>
       <Small>不適切な書き込みは一切許容されず、通報された内容は運営が確認します。</Small>
       <ErrorText>{err}</ErrorText>
-      <Actions><Btn label="同意して農場へ" onPress={submit} disabled={!checked || busy} /></Actions>
+      <Actions><Btn label="同意して村へ" onPress={submit} disabled={!checked || busy} /></Actions>
     </Frame>
   );
 }

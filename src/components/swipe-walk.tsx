@@ -75,7 +75,7 @@ export function SwipeArea({ onMove, children }: { onMove: (dir: Dir) => void; ch
         style={s.fill}
         accessible
         accessibilityRole="adjustable"
-        accessibilityLabel="農場のマップ"
+        accessibilityLabel="村のマップ"
         accessibilityHint="なぞった方向に歩きます。上下左右のアクションで1マスずつ歩けます"
         accessibilityActions={ACTIONS}
         onAccessibilityAction={(e) => onMove(e.nativeEvent.actionName as Dir)}

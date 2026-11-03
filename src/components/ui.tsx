@@ -3,6 +3,7 @@ import {
   Pressable, type StyleProp, StyleSheet, Text, type TextProps, TextInput, type TextStyle, View, type ViewStyle,
 } from "react-native";
 
+import { DONE_MAX_CHARS, DONE_MAX_LINES } from "@/lib/dekitakoto/constants";
 import { MAX_CHARS, MAX_LINES } from "@/lib/game";
 import { countContent, measure } from "@/lib/text";
 import { C, F, LINE_H } from "@/theme";
@@ -12,7 +13,8 @@ export function T({ style, ...props }: TextProps) {
   return <Text {...props} style={[s.t, style]} />;
 }
 
-export const Title = ({ children }: { children: ReactNode }) => <T style={s.title} accessibilityRole="header">{children}</T>;
+export const Title = ({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) =>
+  <T style={[s.title, style]} accessibilityRole="header">{children}</T>;
 export const Body = ({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) => <T style={[s.body, style]}>{children}</T>;
 export const Small = ({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) => <T style={[s.small, style]}>{children}</T>;
 export const ErrorText = ({ children }: { children: ReactNode }) =>
@@ -125,6 +127,34 @@ export function PaperInput({ placeholder, onChangeText, initial = "", minChars =
       <T style={[s.counter, over && { color: C.over }]}>
         {`${lines} / ${MAX_LINES}行　${chars} / ${MAX_CHARS}字${short > 0 ? `　（あと${short}字）` : ""}`}
       </T>
+    </>
+  );
+}
+
+// 「できたこと」を書く便箋。3行・80字まで。プレースホルダーは出さない
+export function DoneInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <>
+      <View style={s.paper}>
+        <Rules count={DONE_MAX_LINES} top={PAD_TOP} />
+        <TextInput
+          value={value}
+          onChangeText={(v) => {
+            const lines = v.split("\n");
+            if (lines.length > DONE_MAX_LINES) v = lines.slice(0, DONE_MAX_LINES).join("\n");
+            if (v.length > DONE_MAX_CHARS) v = v.slice(0, DONE_MAX_CHARS);
+            onChange(v);
+          }}
+          multiline
+          autoFocus
+          scrollEnabled={false}
+          maxLength={DONE_MAX_CHARS}
+          accessibilityLabel="できたこと"
+          textAlignVertical="top"
+          style={[s.paperInput, { height: LINE_H * DONE_MAX_LINES }]}
+        />
+      </View>
+      <T style={s.counter}>{`${value.length} / ${DONE_MAX_CHARS}字・${DONE_MAX_LINES}行まで`}</T>
     </>
   );
 }
