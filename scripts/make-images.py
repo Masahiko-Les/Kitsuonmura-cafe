@@ -1,12 +1,12 @@
 """Android のアイコンと起動画像を作る。
 
-アプリのアイコンは assets/images/icon.png（手描きのドット絵）をそのまま使う。
+アプリのアイコンは assets/images/icon.png（森のカフェと焚き火の絵）をそのまま使う。
 起動画像は、ゲーム内の芽のドット絵（farm-map.tsx の drawSprout）を大きくしている。
 使い方：python3 scripts/make-images.py
 """
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "assets" / "images"
@@ -17,10 +17,10 @@ LEAF = "#9cc86a"
 PAPER = "#f6efd9"
 
 
-def sprout(draw, ox, oy, px, soil=True, mono=None):
+def sprout(draw, ox, oy, px, soil=True):
     """16×16 のマスに、畑と芽を描く。px は1ドットの大きさ。"""
     def rect(x, y, w, h, c):
-        draw.rectangle([ox + x * px, oy + y * px, ox + (x + w) * px - 1, oy + (y + h) * px - 1], fill=mono or c)
+        draw.rectangle([ox + x * px, oy + y * px, ox + (x + w) * px - 1, oy + (y + h) * px - 1], fill=c)
 
     if soil:
         rect(0, 0, 16, 16, "#8a5a34")
@@ -39,31 +39,30 @@ def sprout(draw, ox, oy, px, soil=True, mono=None):
 
 
 def android():
-    # アダプティブアイコン：中央 66% が必ず見える範囲
-    bg = Image.new("RGB", (512, 512), MOSS)
-    bg.save(OUT / "android-icon-background.png")
+    # アダプティブアイコン：1024px のうち中央 2/3 が見える範囲で、端末ごとの形に切り抜かれる
+    size, art_size = 1024, 720
+    art = Image.open(OUT / "icon.png").convert("RGB")
 
-    # 前景はアプリのアイコン（assets/images/icon.png）を縮めて、切り抜かれても欠けない中央に置く
-    fg = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    art = Image.open(OUT / "icon.png").convert("RGBA").resize((340, 340), Image.NEAREST)
-    fg.paste(art, ((512 - 340) // 2, (512 - 340) // 2))
+    # 背景は同じ絵をぼかしたもの。前景の絵の縁が見えても、なじむようにしている
+    art.resize((size, size), Image.LANCZOS).filter(ImageFilter.GaussianBlur(40)).save(OUT / "android-icon-background.png")
+
+    # 前景は絵全体を、見える範囲より少し大きく縮めて真ん中に置く
+    fg = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    pos = (size - art_size) // 2
+    fg.paste(art.resize((art_size, art_size), Image.LANCZOS), (pos, pos))
     fg.save(OUT / "android-icon-foreground.png")
-
-    mono = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    sprout(ImageDraw.Draw(mono), 128, 128, 16, soil=False, mono="#ffffff")
-    mono.save(OUT / "android-icon-monochrome.png")
 
 
 def splash():
-    # 起動画像：芽の下に「吃音農場」。苔色の背景の上に置く前提で、背景は透明
+    # 起動画像：芽の下に「吃音村カフェ」。苔色の背景の上に置く前提で、背景は透明
     w, h = 720, 520
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     px = 18
     sprout(d, (w - 16 * px) // 2, 0, px, soil=False)
 
-    font = ImageFont.truetype(str(FONT), 128)
-    text = "吃音農場"
+    font = ImageFont.truetype(str(FONT), 104)
+    text = "吃音村カフェ"
     box = d.textbbox((0, 0), text, font=font)
     tw = box[2] - box[0]
     d.text(((w - tw) // 2 - box[0], 16 * px + 40 - box[1]), text, font=font, fill=LEAF)
