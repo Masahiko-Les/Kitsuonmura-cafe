@@ -13,7 +13,6 @@ import { type DoneSeed, canWater, doneSeedAt, plantable, refreshToday, useDone }
 import {
   type Area, BUILDINGS, CAFE_GUESTS, DIRS, type Dir, ROOMS, type RoomId, START, WALKABLE, buildingAt, keyOf, roomTileAt, tileAt,
 } from "@/lib/game";
-import { animalName } from "@/lib/cafe";
 import { setGoToSeed, useActions } from "@/modals";
 import { useFarm } from "@/state/farm";
 import { C } from "@/theme";
@@ -144,10 +143,6 @@ export function FarmScreen() {
       if (front === "E") return { label: "出る", hint: "外に出られる。", run: null, go: "leave" };
       if (room === "cafe") {
         const seated = roomTileAt("cafe", pos.x, pos.y) === "s";
-        const guestName = () => {
-          const g = CAFE_GUESTS[keyOf(fx, fy)];
-          return g ? `${animalName(g)}の村人` : "村人";
-        };
         if (seated && front === "C") {
           return { label: "話す", hint: "マスター「いらっしゃい。今日は、どんなお話をしましょうか」", run: openCafe };
         }
@@ -159,8 +154,7 @@ export function FarmScreen() {
         }
         if (front === "s") {
           // 空いている丸椅子に座る。両隣の村人をヒントで伝える
-          const near = [CAFE_GUESTS[keyOf(fx - 1, fy)], CAFE_GUESTS[keyOf(fx + 1, fy)]].filter(Boolean).map((g) => animalName(g!));
-          const side = near.length ? `隣には${near.join("と")}の村人が座っている。` : "";
+          const side = CAFE_GUESTS[keyOf(fx - 1, fy)] || CAFE_GUESTS[keyOf(fx + 1, fy)] ? "隣には村人が座っている。" : "";
           return {
             label: "座る",
             hint: `カウンターの席が空いている。${side}`,
@@ -169,8 +163,8 @@ export function FarmScreen() {
             seat: { x: fx, y: fy },
           };
         }
-        if (front === "g") return { label: "…", hint: `${guestName()}が、カウンターでくつろいでいる。`, run: null };
-        if (front === "a") return { label: "…", hint: `${guestName()}が、静かにカップを傾けている。`, run: null };
+        if (front === "g") return { label: "…", hint: `村人が、カウンターでくつろいでいる。`, run: null };
+        if (front === "a") return { label: "…", hint: `村人が、静かにカップを傾けている。`, run: null };
         if (front === "T") return { label: "…", hint: "テーブル席は埋まっているようだ。カウンターに座ろう。", run: null };
       }
       const h = ROOM_HINTS[room][front];

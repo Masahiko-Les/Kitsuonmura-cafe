@@ -5,11 +5,14 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { GUEST_LOOKS } from "@/components/animals";
 import { CafeScene } from "@/components/cafe-scene";
 import { useToast } from "@/components/toast";
 import { Actions, Btn, ErrorText, LinkBtn, Links, Paper, PaperInput, Small, T } from "@/components/ui";
-import { REACTIONS, type ReactionId, THEMES, type Theme, animalName, randomAnimal } from "@/lib/cafe";
-import { CAFE_HIDDEN_KEY, type Voice, loadVoices, reportAnswer, saveAnswer, sendReaction } from "@/lib/cafe-api";
+import { REACTIONS, type ReactionId, THEMES, type Theme } from "@/lib/cafe";
+import {
+  CAFE_HIDDEN_KEY, type CafeSeries, type Voice, loadSeries, newSessionId, reportAnswer, saveAnswer, sendReaction, setSeriesStatus, voicesFor,
+} from "@/lib/cafe-api";
 import { checkText } from "@/lib/text";
 import { useActions } from "@/modals";
 import { useFarm } from "@/state/farm";
@@ -19,7 +22,12 @@ type Step =
   | { kind: "themes" }
   | { kind: "ask"; theme: Theme; index: number }
   | { kind: "voices"; theme: Theme; index: number; answered: boolean; voices: Voice[]; at: number }
-  | { kind: "end"; theme: Theme; answered: number; shared: number };
+  | { kind: "end"; theme: Theme; entries: Entry[]; crisis: boolean };
+
+// この会話で残した言葉
+type Entry = { id: string; question: string; text: string };
+type Session = { id: string; entries: Entry[]; crisis: boolean; series: CafeSeries[] | null };
+const newSession = (): Session => ({ id: newSessionId(), entries: [], crisis: false, series: null });
 
 /* ---------- 通報して隠した回答（端末に保存） ---------- */
 function useHiddenAnswers() {
@@ -44,12 +52,10 @@ export function CafeScreen() {
   const insets = useSafeAreaInsets();
   const { hidden, hide } = useHiddenAnswers();
   const [step, setStep] = useState<Step>({ kind: "themes" });
-  // この会話で答えた数・届けてもよいと選んだ数
-  const tally = useRef({ answered: 0, shared: 0 });
-  // 自分の言葉を紹介するときの動物。1回の会話のあいだは同じ姿にする
-  const myAnimal = useRef(randomAnimal());
+  // 1回の会話（3問1シリーズ）の記録。隣に座る村人は会話のあいだ同じにする
+  const session = useRef<Session | null>(null);
   // 左隣に座っている村人（カフェにいるあいだは同じ）
-  const [leftGuest] = useState(randomAnimal);
+  const [leftGuest] = useState(() => GUEST_LOOKS[Math.floor(Math.random() * GUEST_LOOKS.length)]);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
 
   const go = (next: Step) => {
@@ -58,24 +64,25 @@ export function CafeScreen() {
   };
 
   const startTheme = (theme: Theme) => {
-    tally.current = { answered: 0, shared: 0 };
-    myAnimal.current = randomAnimal();
+    session.current = newSession();
     go({ kind: "ask", theme, index: 0 });
   };
 
   const showVoices = async (theme: Theme, index: number, answered: boolean) => {
-    const voices = await loadVoices(theme.questions[index].id, uid, hidden);
-    go({ kind: "voices", theme, index, answered, voices, at: 0 });
+    const cur = session.current;
+    if (!cur) return;
+    cur.series ??= await loadSeries(theme.id, uid, hidden);
+    go({ kind: "voices", theme, index, answered, voices: voicesFor(theme.questions[index].id, cur.series), at: 0 });
   };
 
   const nextQuestion = (theme: Theme, index: number) => {
     if (index + 1 < theme.questions.length) go({ kind: "ask", theme, index: index + 1 });
-    else go({ kind: "end", theme, ...tally.current });
+    else go({ kind: "end", theme, entries: session.current?.entries ?? [], crisis: session.current?.crisis ?? false });
   };
 
   const voice = step.kind === "voices" ? step.voices[step.at] : null;
   const speakerName = voice
-    ? (voice.sample ? "お手本（運営が用意した言葉）" : `隣の席の、${animalName(voice.animal)}の村人`)
+    ? (voice.sample ? "お手本（運営が用意した言葉）" : "隣の席の村人")
     : "マスター（ふくろう）";
 
   return (
@@ -86,7 +93,7 @@ export function CafeScreen() {
     >
       <CafeScene
         left={leftGuest}
-        neighbor={voice ? voice.animal : null}
+        neighbor={step.kind === "voices" && voice ? GUEST_LOOKS[step.at % GUEST_LOOKS.length] : null}
         talking={voice ? "neighbor" : "master"}
         height={step.kind === "ask" ? 120 : 150}
       />
@@ -102,23 +109,25 @@ export function CafeScreen() {
             key={`${step.theme.id}-${step.index}`}
             theme={step.theme}
             index={step.index}
-            onSave={async (text, share) => {
+            onSave={async (text) => {
               const res = checkText(text);
               if (res.error) return res.error;
-              const status = res.crisis ? "review" : share ? "pending" : "private";
+              const cur = session.current;
+              if (!cur) return "";
+              const q = step.theme.questions[step.index];
               if (uid && uid !== "offline") {
                 try {
-                  await saveAnswer({
-                    uid, themeId: step.theme.id, questionId: step.theme.questions[step.index].id,
-                    text: text.trim(), animal: myAnimal.current, status,
+                  const id = await saveAnswer({
+                    uid, sessionId: cur.id, themeId: step.theme.id, questionId: q.id,
+                    text: text.trim(), status: res.crisis ? "review" : "draft",
                   });
+                  cur.entries.push({ id, question: q.text, text: text.trim() });
                 } catch (e) {
                   console.error(e);
                   return "言葉を残せませんでした。通信を確認して、もう一度押してください。";
                 }
               }
-              tally.current.answered += 1;
-              if (status === "pending") tally.current.shared += 1;
+              if (res.crisis) cur.crisis = true;
               await showVoices(step.theme, step.index, true);
               return res.crisis ? "crisis" : "";
             }}
@@ -132,6 +141,9 @@ export function CafeScreen() {
             onNext={() => nextQuestion(step.theme, step.index)}
             onReported={(id) => {
               hide(id);
+              // 通報した人には、その村人の続きの言葉も出さない
+              const cur = session.current;
+              if (cur?.series) cur.series = cur.series.filter((x) => !x.answers.some((a) => a.id === id));
               const rest = step.voices.filter((v) => v.key !== id);
               if (rest.length === 0) nextQuestion(step.theme, step.index);
               else go({ ...step, voices: rest, at: Math.min(step.at, rest.length - 1) });
@@ -172,7 +184,7 @@ function ThemeStep({ onPick }: { onPick: (t: Theme) => void }) {
           </Pressable>
         ))}
       </View>
-      <Small>質問はいつでもスキップできます。書いた言葉は、あなたが選んだときだけ、運営の確認のあとで未来の村人に届きます。</Small>
+      <Small>質問はいつでもスキップできます。3つの質問すべてに答えて、届けてもよいと選んだ言葉だけが、運営の確認のあとで未来の村人に届きます。</Small>
       <Links>
         <LinkBtn label="わたしの言葉を見る" onPress={() => router.push("/cafe-mine")} />
       </Links>
@@ -184,12 +196,11 @@ function ThemeStep({ onPick }: { onPick: (t: Theme) => void }) {
 function AskStep({ theme, index, onSave, onSkip }: {
   theme: Theme;
   index: number;
-  onSave: (text: string, share: boolean) => Promise<string>;
+  onSave: (text: string) => Promise<string>;
   onSkip: () => Promise<void>;
 }) {
   const a = useActions();
   const text = useRef("");
-  const [share, setShare] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const q = theme.questions[index];
@@ -197,7 +208,7 @@ function AskStep({ theme, index, onSave, onSkip }: {
   const submit = async () => {
     setBusy(true);
     setErr("");
-    const res = await onSave(text.current, share);
+    const res = await onSave(text.current);
     if (res === "crisis") { a.showSupport("cafe"); return; }
     if (res) { setErr(res); setBusy(false); }
   };
@@ -214,19 +225,6 @@ function AskStep({ theme, index, onSave, onSkip }: {
         <T style={s.qText}>{q.text}</T>
       </View>
       <PaperInput placeholder="思ったことを、自由に書いてみてください" onChangeText={(t) => { text.current = t; }} />
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: share }}
-        onPress={() => setShare(!share)}
-        style={s.consent}
-        hitSlop={6}
-      >
-        <View style={[s.box, share && s.boxOn]}>{share ? <T style={s.check}>✓</T> : null}</View>
-        <View style={{ flex: 1 }}>
-          <T style={s.consentText}>この言葉を、未来の村人に届けてもよい</T>
-          <T style={s.consentSub}>名前は出ず、動物の姿で紹介されます。運営が確認してから届きます。あとから「わたしの言葉」で取り消せます。</T>
-        </View>
-      </Pressable>
       <ErrorText>{err}</ErrorText>
       <Actions>
         <Btn kind="quiet" label="答えずに次へ" onPress={skip} disabled={busy} />
@@ -301,7 +299,7 @@ function VoicesStep({ step, onMore, onNext, onReported }: {
               <T style={s.sampleText}>これは運営が用意したお手本の言葉です。実際の村人の言葉ではありません。</T>
             </View>
           ) : null}
-          <Paper text={v.text} from={v.sample ? "お手本（運営）" : `${animalName(v.animal)}の村人より`} />
+          <Paper text={v.text} from={v.sample ? "お手本（運営）" : "村人より"} />
           {v.answer ? (
             <>
               <T style={s.reactLead}>読んで感じた気持ちを、そっと届けられます（書いた人にだけ届きます）</T>
@@ -336,9 +334,47 @@ function VoicesStep({ step, onMore, onNext, onReported }: {
 
 /* ---------- 会話のおわり ---------- */
 function EndStep({ step, onAgain }: { step: Extract<Step, { kind: "end" }>; onAgain: () => void }) {
-  const lines = ["今日は、ゆっくり話してくれてありがとうございました。"];
-  if (step.answered > 0) lines.push("あなたの言葉は、ここに大切にしまっておきますね。");
-  if (step.shared > 0) lines.push("届けてもよいと選んだ言葉は、運営が確認したあと、未来の村人のもとへ届きます。きっと、誰かの支えになります。");
+  const toast = useToast();
+  const [decided, setDecided] = useState<"shared" | "kept" | null>(null);
+  const [busy, setBusy] = useState(false);
+  const full = step.entries.length === step.theme.questions.length && !step.crisis;
+
+  const decide = async (share: boolean) => {
+    setBusy(true);
+    try {
+      await setSeriesStatus(step.entries.map((e) => e.id), share ? "pending" : "private");
+      setDecided(share ? "shared" : "kept");
+    } catch (e) {
+      console.error(e);
+      toast("変えられませんでした。通信を確認してください。");
+    }
+    setBusy(false);
+  };
+
+  // 3問そろったら、3つまとめて届けるかどうかを聞く
+  if (full && !decided) {
+    return (
+      <>
+        <Speech>{"今日は、ゆっくり話してくれてありがとうございました。\nこの3つの言葉を、ひとまとまりで未来の村人に届けてもよいですか？"}</Speech>
+        {step.entries.map((e) => (
+          <View key={e.id} style={s.entry}>
+            <T style={s.qSmall}>{`「${e.question}」`}</T>
+            <Paper text={e.text} minLines={2} />
+          </View>
+        ))}
+        <T style={s.consentSub}>名前は出ません。運営が確認してから、3つまとめて届きます。あとから「わたしの言葉」で取り消せます。</T>
+        <Actions>
+          <Btn kind="quiet" label="自分だけにしておく" onPress={() => decide(false)} disabled={busy} />
+          <Btn label="届けてもよい" onPress={() => decide(true)} disabled={busy} />
+        </Actions>
+      </>
+    );
+  }
+
+  const lines = full ? [] : ["今日は、ゆっくり話してくれてありがとうございました。"];
+  if (step.entries.length > 0) lines.push("あなたの言葉は、ここに大切にしまっておきますね。");
+  if (step.entries.length > 0 && !full && !step.crisis) lines.push("未来の村人に届けられるのは、3つの質問すべてに答えたときです。");
+  if (decided === "shared") lines.push("運営が確認したあと、未来の村人のもとへ届きます。きっと、誰かの支えになります。");
   lines.push("また、いつでも寄ってくださいね。");
   return (
     <>
@@ -383,14 +419,8 @@ const s = StyleSheet.create({
   qCount: { fontSize: 13, color: C.sub, marginBottom: 4 },
   qText: { fontFamily: F.letterBold, fontSize: 18, lineHeight: 28, color: C.text },
   qSmall: { fontSize: 13, lineHeight: 20, color: C.sub, marginBottom: 8 },
-  consent: { flexDirection: "row", gap: 10, marginTop: 12, alignItems: "flex-start" },
-  box: {
-    width: 24, height: 24, borderRadius: 4, borderWidth: 2, borderColor: C.soft, alignItems: "center", justifyContent: "center", marginTop: 1,
-  },
-  boxOn: { backgroundColor: C.leaf, borderColor: C.leaf },
-  check: { fontSize: 15, color: C.ink, lineHeight: 18 },
-  consentText: { fontSize: 15 },
-  consentSub: { fontSize: 12, lineHeight: 18, color: C.sub, marginTop: 2 },
+  consentSub: { fontSize: 12, lineHeight: 18, color: C.sub, marginTop: 10 },
+  entry: { marginBottom: 12 },
   sampleTag: { backgroundColor: "#e2c15a", borderRadius: 4, paddingVertical: 5, paddingHorizontal: 8, marginBottom: 8 },
   sampleText: { fontSize: 12, lineHeight: 18, color: C.ink },
   reactLead: { fontSize: 13, lineHeight: 20, color: C.sub, marginTop: 12, marginBottom: 6 },

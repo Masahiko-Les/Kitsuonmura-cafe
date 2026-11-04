@@ -3,19 +3,6 @@
    質問の文言とお手本の言葉は、公開前に見直すこと。
    ========================================================= */
 
-// 向かいの席に座る村人の姿。名前は出さず、動物の姿だけで紹介する（匿名のため）
-export const ANIMALS = [
-  { id: "rabbit", name: "うさぎ" },
-  { id: "cat", name: "ねこ" },
-  { id: "dog", name: "いぬ" },
-  { id: "tanuki", name: "たぬき" },
-  { id: "fox", name: "きつね" },
-  { id: "sheep", name: "ひつじ" },
-] as const;
-export type AnimalId = (typeof ANIMALS)[number]["id"];
-export const animalName = (id: string) => ANIMALS.find((a) => a.id === id)?.name ?? "村人";
-export const randomAnimal = (): AnimalId => ANIMALS[Math.floor(Math.random() * ANIMALS.length)].id;
-
 // 言葉を読んだときに届けられる気持ち。数は競わせず、書いた本人にだけ静かに届く
 export const REACTIONS = [
   { id: "empathy", label: "共感しました" },
@@ -27,7 +14,7 @@ export type ReactionId = (typeof REACTIONS)[number]["id"];
 export const reactionLabel = (id: string) => REACTIONS.find((r) => r.id === id)?.label ?? "";
 
 // お手本の言葉（運営が用意したもの）。実際の村人の言葉と誤解されないよう、画面で必ず明示する
-export type Sample = { animal: AnimalId; text: string };
+export type Sample = { text: string };
 export type Question = { id: string; text: string; samples: Sample[] };
 export type Theme = {
   id: string;
@@ -53,42 +40,42 @@ export const THEMES: Theme[] = [
     questions: [
       {
         id: "stutter-1",
-        text: "最近、吃音について心に残った出来事はありますか？",
-        samples: [{ animal: "cat", text: "職場の会議で自己紹介をしたとき、名前の最初の音が出てこなくて、少し時間がかかりました。\nでも、隣の人が何も言わずに待ってくれました。" }],
+        text: "最近、吃音が気になる場面はありましたか？",
+        samples: [{ text: "電話で予約を取るとき、お店の名前の最初の音が出てこなくて、少し焦りました。\n電話を切ったあとも、しばらく気になっていました。" }],
       },
       {
         id: "stutter-2",
-        text: "そのとき、どんな気持ちになりましたか？",
-        samples: [{ animal: "sheep", text: "最初は恥ずかしくて、顔が熱くなりました。\nでも、待ってもらえたことがうれしくて、帰り道は少しだけ気持ちが軽かったです。" }],
+        text: "吃音が気になった時に、少し気持ちが楽になれる工夫や、ほっとできる瞬間はありますか？",
+        samples: [{ text: "話す前に、ゆっくり息をはくようにしています。\n帰り道に温かい飲みものを買ってひと息つくと、ほっとします。" }],
       },
       {
         id: "stutter-3",
-        text: "今、その出来事について思うことはありますか？",
-        samples: [{ animal: "tanuki", text: "うまく話せなかったことより、待ってくれた人がいたことを覚えておきたいと思っています。\n自分も、誰かを待てる人でいたいです。" }],
+        text: "最近の自分に、ひとことかけるとしたら、何と言いますか？",
+        samples: [{ text: "苦手な電話、最後までかけられたね。\n今週もおつかれさま、と言いたいです。" }],
       },
     ],
   },
   {
     id: "chat",
     title: "気軽に雑談する",
-    description: "好きなものや趣味、最近あったことを気軽に話しましょう。",
+    description: "好きなものや趣味、これからの楽しみを気軽に話しましょう。",
     aim: "自分の好きなことを話しながら、相手との共通点を見つけたり、互いの人柄を知ったりする。",
     lead: "雑談ですね。いいですね。肩の力を抜いて、好きなことを聞かせてください。",
     questions: [
       {
         id: "chat-1",
         text: "好きなものや趣味はありますか？",
-        samples: [{ animal: "dog", text: "パンを焼くのが好きです。\n休みの日は、朝からゆっくり生地をこねています。" }],
+        samples: [{ text: "パンを焼くのが好きです。\n休みの日は、朝からゆっくり生地をこねています。" }],
       },
       {
         id: "chat-2",
         text: "その好きなものや趣味に、どんな魅力を感じていますか？",
-        samples: [{ animal: "rabbit", text: "時間をかけた分だけ、ちゃんとおいしくなるところです。\n焼けるまでの香りも好きで、待つ時間ごと楽しんでいます。" }],
+        samples: [{ text: "時間をかけた分だけ、ちゃんとおいしくなるところです。\n焼けるまでの香りも好きで、待つ時間ごと楽しんでいます。" }],
       },
       {
         id: "chat-3",
-        text: "最近、楽しかったことや、ちょっと嬉しかったことはありますか？",
-        samples: [{ animal: "fox", text: "久しぶりに友だちと電話をして、気づいたら1時間も話していました。\nたわいもない話ばかりでしたが、とても楽しかったです。" }],
+        text: "これからやってみたいことや、楽しみにしていることはありますか？",
+        samples: [{ text: "今度、友だちを家に呼んで、焼きたてのパンを食べてもらいたいです。\nどんなパンにしようか、今から考えるのが楽しみです。" }],
       },
     ],
   },

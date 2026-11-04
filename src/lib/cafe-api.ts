@@ -1,29 +1,31 @@
 import {
-  collection, deleteDoc, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, type Query, type Timestamp, updateDoc, where, writeBatch,
+  collection, doc, getDoc, getDocs, limit, query, serverTimestamp, setDoc, type Query, type Timestamp, where, writeBatch,
 } from "firebase/firestore";
 
-import { MAX_VOICES, type ReactionId, questionById } from "./cafe";
+import { MAX_VOICES, type ReactionId, questionById, themeById } from "./cafe";
 import { db } from "./firebase";
 
 /* =========================================================
    吃音村カフェの回答と、届いた気持ち
-   - 回答は名前を持たない（匿名）。紹介するときは動物の姿だけを出す。
-   - 「届けてもよい」を選んだ回答は pending で保存し、運営が確認して public に変えたものだけが、ほかの村人に届く。
+   - 回答は名前を持たない（匿名）。紹介するときは「村人」とだけ出す。
+   - 回答は1問ずつ保存するが、同じ会話の回答は sessionId でつながっていて、3問1シリーズで扱う。
+   - 会話のあいだは draft（本人だけ）。3問すべてに答えて「届けてもよい」を選ぶと pending になり、
+     運営がシリーズごと確認して public に変えたものだけが、ほかの村人に届く。
    - 危機的な言葉を含む回答は review で保存し、誰にも届かない。
    ========================================================= */
 
 // 通報して隠した回答（端末に保存）
 export const CAFE_HIDDEN_KEY = "kitsuon-cafe-hidden";
 
-export type CafeStatus = "pending" | "public" | "private" | "review";
+export type CafeStatus = "draft" | "pending" | "public" | "private" | "review";
 
 export type CafeAnswer = {
   id: string;
   uid: string;
+  sessionId: string; // 同じ会話（3問1シリーズ）の回答に共通のID
   themeId: string;
   questionId: string;
   text: string;
-  animal: string;
   status: CafeStatus;
   createdAt?: Timestamp | null;
 };
@@ -38,7 +40,31 @@ export type CafeReaction = {
 };
 
 // 画面に出す「ほかの村人の言葉」。sample はお手本（運営が用意した文章）
-export type Voice = { key: string; animal: string; text: string; sample: boolean; answer?: CafeAnswer };
+export type Voice = { key: string; text: string; sample: boolean; answer?: CafeAnswer };
+
+// ひとりの村人の、3問そろった回答
+export type CafeSeries = { sessionId: string; uid: string; answers: CafeAnswer[] };
+
+// 公開済みの回答を一度に読む上限（3問で1シリーズなので、30シリーズぶん）
+const SERIES_SCAN = 90;
+
+export const newSessionId = () => doc(collection(db, "cafeAnswers")).id;
+
+// 回答を会話ごとにまとめる。シリーズの順は渡された順のままで、中は質問の順に並べる
+export type AnswerGroup = { sessionId: string; answers: CafeAnswer[]; complete: boolean };
+export function groupSeries(answers: CafeAnswer[]): AnswerGroup[] {
+  const bySession = new Map<string, CafeAnswer[]>();
+  for (const a of answers) bySession.set(a.sessionId, [...(bySession.get(a.sessionId) ?? []), a]);
+  return [...bySession.entries()].map(([sessionId, list]) => {
+    const questions = themeById(list[0].themeId)?.questions ?? [];
+    const order = (a: CafeAnswer) => questions.findIndex((q) => q.id === a.questionId);
+    return {
+      sessionId,
+      answers: [...list].sort((x, y) => order(x) - order(y)),
+      complete: questions.length > 0 && questions.every((q) => list.some((a) => a.questionId === q.id)),
+    };
+  });
+}
 
 export async function saveAnswer(a: Omit<CafeAnswer, "id" | "createdAt">) {
   const ref = doc(collection(db, "cafeAnswers"));
@@ -46,26 +72,42 @@ export async function saveAnswer(a: Omit<CafeAnswer, "id" | "createdAt">) {
   return ref.id;
 }
 
-// 同じ質問への、ほかの村人の公開済みの言葉。足りないぶんはお手本で補う
-export async function loadVoices(questionId: string, uid: string, hidden: Set<string>): Promise<Voice[]> {
-  let real: Voice[] = [];
+// ほかの村人の公開済みのシリーズ。3問そろっているものだけを、1人1シリーズまで選ぶ
+export async function loadSeries(themeId: string, uid: string, hidden: Set<string>): Promise<CafeSeries[]> {
+  const theme = themeById(themeId);
+  if (!theme) return [];
   try {
     const snap = await getDocs(query(
       collection(db, "cafeAnswers"),
-      where("questionId", "==", questionId),
+      where("themeId", "==", themeId),
       where("status", "==", "public"),
-      limit(30),
+      limit(SERIES_SCAN),
     ));
-    real = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }) as CafeAnswer)
-      .filter((a) => a.uid !== uid && !hidden.has(a.id))
-      .map((a) => ({ key: a.id, animal: a.animal, text: a.text, sample: false, answer: a }));
+    const bySession = new Map<string, CafeAnswer[]>();
+    for (const d of snap.docs) {
+      const a = { id: d.id, ...d.data() } as CafeAnswer;
+      bySession.set(a.sessionId, [...(bySession.get(a.sessionId) ?? []), a]);
+    }
+    const series = [...bySession.entries()]
+      .filter(([, answers]) => answers[0].uid !== uid
+        && !answers.some((a) => hidden.has(a.id))
+        && theme.questions.every((q) => answers.some((a) => a.questionId === q.id)))
+      .map(([sessionId, answers]) => ({ sessionId, uid: answers[0].uid, answers }));
+    shuffle(series);
+    const seen = new Set<string>();
+    return series.filter((x) => !seen.has(x.uid) && seen.add(x.uid)).slice(0, MAX_VOICES);
   } catch (e) {
-    console.error("cafe voices", e);
+    console.error("cafe series", e);
+    return [];
   }
-  shuffle(real);
+}
+
+// この質問で読む言葉。同じ村人の話が3問を通してつながる。足りないぶんはお手本で補う
+export function voicesFor(questionId: string, series: CafeSeries[]): Voice[] {
+  const real: Voice[] = series.flatMap((x) => x.answers.filter((a) => a.questionId === questionId))
+    .map((a) => ({ key: a.id, text: a.text, sample: false, answer: a }));
   const samples: Voice[] = (questionById(questionId)?.question.samples ?? [])
-    .map((s, i) => ({ key: `sample-${questionId}-${i}`, animal: s.animal, text: s.text, sample: true }));
+    .map((s, i) => ({ key: `sample-${questionId}-${i}`, text: s.text, sample: true }));
   return [...real, ...samples].slice(0, MAX_VOICES);
 }
 
@@ -98,12 +140,18 @@ export async function loadReactionsToMe(uid: string): Promise<CafeReaction[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CafeReaction);
 }
 
-export async function makePrivate(answerId: string) {
-  await updateDoc(doc(db, "cafeAnswers", answerId), { status: "private" });
+// 会話のおわりに、シリーズを届ける（pending）か自分だけにする（private）かを決める。運営の承認もここを通る
+export async function setSeriesStatus(answerIds: string[], status: "pending" | "public" | "private") {
+  const b = writeBatch(db);
+  answerIds.forEach((id) => b.update(doc(db, "cafeAnswers", id), { status }));
+  await b.commit();
 }
 
-export async function deleteAnswer(answerId: string) {
-  await deleteDoc(doc(db, "cafeAnswers", answerId));
+// 本人がシリーズごと削除する
+export async function deleteSeries(answerIds: string[]) {
+  const b = writeBatch(db);
+  answerIds.forEach((id) => b.delete(doc(db, "cafeAnswers", id)));
+  await b.commit();
 }
 
 /* ---------- 通報 ---------- */
@@ -133,8 +181,15 @@ export async function loadPending(): Promise<CafeAnswer[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CafeAnswer);
 }
 
-export async function setAnswerStatus(answerId: string, status: "public" | "private") {
-  await updateDoc(doc(db, "cafeAnswers", answerId), { status });
+// 通報を受けて、シリーズごと止める。remove なら通報された言葉は削除し、残りを非公開にする
+export async function adminRetireSeries(answer: CafeAnswer, remove: boolean) {
+  const snap = await getDocs(query(collection(db, "cafeAnswers"), where("sessionId", "==", answer.sessionId)));
+  const b = writeBatch(db);
+  for (const d of snap.docs) {
+    if (remove && d.id === answer.id) b.delete(d.ref);
+    else if (d.data().status === "public" || d.data().status === "pending") b.update(d.ref, { status: "private" });
+  }
+  await b.commit();
 }
 
 // まだ確認していない、カフェの言葉への通報。回答ごとにまとめる
@@ -155,8 +210,4 @@ export async function markReportsHandled(reportIds: string[]) {
   const b = writeBatch(db);
   reportIds.forEach((id) => b.update(doc(db, "reports", id), { handled: true, handledAt: serverTimestamp() }));
   await b.commit();
-}
-
-export async function adminDeleteAnswer(answerId: string) {
-  await deleteDoc(doc(db, "cafeAnswers", answerId));
 }

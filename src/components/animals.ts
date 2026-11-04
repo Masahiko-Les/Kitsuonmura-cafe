@@ -4,6 +4,9 @@ export type RectFn = (x: number, y: number, w: number, h: number, color: string)
 
 const EYE = "#2a2018";
 
+// カフェの情景に座っている客の見た目。回答とは結びつかない、ただの背景
+export const GUEST_LOOKS = ["rabbit", "cat", "dog", "tanuki", "fox", "sheep"];
+
 type Look = { fur: string; dark: string; muzzle?: string };
 const LOOKS: Record<string, Look> = {
   rabbit: { fur: "#f4f1ea", dark: "#f2b6c0" },

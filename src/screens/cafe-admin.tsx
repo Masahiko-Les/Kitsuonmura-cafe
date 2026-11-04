@@ -3,9 +3,9 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } fro
 
 import { useToast } from "@/components/toast";
 import { Actions, Btn, Paper, Small, T } from "@/components/ui";
-import { animalName, questionById } from "@/lib/cafe";
+import { questionById } from "@/lib/cafe";
 import {
-  type CafeAnswer, type CafeReport, adminDeleteAnswer, loadOpenReports, loadPending, markReportsHandled, setAnswerStatus,
+  type AnswerGroup, type CafeAnswer, type CafeReport, adminRetireSeries, groupSeries, loadOpenReports, loadPending, markReportsHandled, setSeriesStatus,
 } from "@/lib/cafe-api";
 import { dateText, millis } from "@/lib/farm-api";
 import { useFarm } from "@/state/farm";
@@ -19,7 +19,7 @@ export function CafeAdmin() {
   const { isAdmin } = useFarm();
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("pending");
-  const [pending, setPending] = useState<CafeAnswer[] | null>(null);
+  const [pending, setPending] = useState<AnswerGroup[] | null>(null);
   const [reports, setReports] = useState<ReportGroup[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null); // 処理中の回答ID
@@ -27,7 +27,7 @@ export function CafeAdmin() {
   const fetchAll = useCallback(async () => {
     const [p, r] = await Promise.all([loadPending(), loadOpenReports()]);
     return {
-      p: p.sort((a, b) => millis(a.createdAt) - millis(b.createdAt)), // 古いものから
+      p: groupSeries(p.sort((a, b) => millis(a.createdAt) - millis(b.createdAt))), // 古いものから
       r,
     };
   }, []);
@@ -61,12 +61,12 @@ export function CafeAdmin() {
   };
 
   /* ---------- 承認待ち ---------- */
-  const decide = async (a: CafeAnswer, status: "public" | "private") => {
-    setBusy(a.id);
+  const decide = async (g: AnswerGroup, status: "public" | "private") => {
+    setBusy(g.sessionId);
     try {
-      await setAnswerStatus(a.id, status);
-      setPending((cur) => cur?.filter((x) => x.id !== a.id) ?? null);
-      toast(status === "public" ? "承認しました。ほかの村人に届きます。" : "承認しませんでした。本人だけの言葉になります。");
+      await setSeriesStatus(g.answers.map((a) => a.id), status);
+      setPending((cur) => cur?.filter((x) => x.sessionId !== g.sessionId) ?? null);
+      toast(status === "public" ? "承認しました。ほかの村人に届きます。" : "承認しませんでした。3つとも本人だけの言葉になります。");
     } catch (e) {
       console.error(e);
       toast("変えられませんでした。");
@@ -79,11 +79,10 @@ export function CafeAdmin() {
     const run = async () => {
       setBusy(g.targetId);
       try {
-        if (g.answer && action === "private") await setAnswerStatus(g.answer.id, "private");
-        if (g.answer && action === "delete") await adminDeleteAnswer(g.answer.id);
+        if (g.answer && action !== "ok") await adminRetireSeries(g.answer, action === "delete");
         await markReportsHandled(g.reports.map((r) => r.id));
         setReports((cur) => cur?.filter((x) => x.targetId !== g.targetId) ?? null);
-        toast(action === "ok" ? "問題なしにしました。" : action === "private" ? "非公開にしました。" : "削除しました。");
+        toast(action === "ok" ? "問題なしにしました。" : action === "private" ? "シリーズを非公開にしました。" : "削除して、シリーズを非公開にしました。");
       } catch (e) {
         console.error(e);
         toast("処理できませんでした。");
@@ -91,7 +90,7 @@ export function CafeAdmin() {
       setBusy(null);
     };
     if (action === "delete") {
-      Alert.alert("", "この言葉を削除しますか？　元には戻せません。", [
+      Alert.alert("", "この言葉を削除しますか？　元には戻せません。同じ会話のほかの言葉は非公開になります。", [
         { text: "やめる", style: "cancel" },
         { text: "削除する", style: "destructive", onPress: run },
       ]);
@@ -118,21 +117,22 @@ export function CafeAdmin() {
           {error ? <T style={s.error}>{error}</T> : null}
           {tab === "pending" ? (
             <>
-              <Small>「未来の村人に届けてもよい」を選んだ言葉です。承認すると、同じ質問に答えたほかの村人に、動物の姿で紹介されます。</Small>
+              <Small>「届けてもよい」を選んだ、3問1シリーズの言葉です。承認すると、同じテーマで話すほかの村人に、名前を出さずに紹介されます。1つでも問題があれば、シリーズ全体を承認しないでください。</Small>
               {pending.length === 0 ? <T style={s.empty}>承認待ちの言葉はありません。</T> : null}
-              {pending.map((a) => (
-                <View key={a.id} style={s.item}>
-                  <AnswerHead a={a} />
+              {pending.map((g) => (
+                <View key={g.sessionId} style={s.item}>
+                  {g.answers.map((a) => <AnswerHead key={a.id} a={a} />)}
+                  {g.complete ? null : <Small>3問そろっていないため、承認できません。</Small>}
                   <Actions>
-                    <Btn kind="quiet" label="承認しない" onPress={() => decide(a, "private")} disabled={busy === a.id} />
-                    <Btn label="承認する" onPress={() => decide(a, "public")} disabled={busy === a.id} />
+                    <Btn kind="quiet" label="シリーズを承認しない" onPress={() => decide(g, "private")} disabled={busy === g.sessionId} />
+                    {g.complete ? <Btn label="シリーズを承認する" onPress={() => decide(g, "public")} disabled={busy === g.sessionId} /> : null}
                   </Actions>
                 </View>
               ))}
             </>
           ) : (
             <>
-              <Small>カフェの言葉への通報です（24時間以内に確認する）。</Small>
+              <Small>カフェの言葉への通報です（24時間以内に確認する）。非公開や削除をすると、同じシリーズの言葉もまとめて届かなくなります。</Small>
               {reports.length === 0 ? <T style={s.empty}>未確認の通報はありません。</T> : null}
               {reports.map((g) => (
                 <View key={g.targetId} style={s.item}>
@@ -141,7 +141,7 @@ export function CafeAdmin() {
                   <Actions>
                     <Btn kind="quiet" label="問題なし" onPress={() => settle(g, "ok")} disabled={busy === g.targetId} />
                     {g.answer && g.answer.status !== "private"
-                      ? <Btn kind="quiet" label="非公開にする" onPress={() => settle(g, "private")} disabled={busy === g.targetId} />
+                      ? <Btn kind="quiet" label="シリーズを非公開にする" onPress={() => settle(g, "private")} disabled={busy === g.targetId} />
                       : null}
                     {g.answer ? <Btn label="削除する" onPress={() => settle(g, "delete")} disabled={busy === g.targetId} /> : null}
                   </Actions>
@@ -160,7 +160,7 @@ function AnswerHead({ a }: { a: CafeAnswer }) {
   const q = questionById(a.questionId);
   return (
     <>
-      <T style={s.meta}>{`${q ? q.theme.title : a.themeId}　${dateText(a.createdAt)}　${animalName(a.animal)}の姿`}</T>
+      <T style={s.meta}>{`${q ? q.theme.title : a.themeId}　${dateText(a.createdAt)}`}</T>
       <T style={s.question}>{q ? q.question.text : a.questionId}</T>
       <Paper text={a.text} minLines={2} />
     </>
