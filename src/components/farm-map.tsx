@@ -8,6 +8,7 @@ import {
   VIEW_TILES_ACROSS, keyOf, roomTileAt, tileAt,
 } from "@/lib/game";
 import { drawAnimal } from "./animals";
+import { drawCafeExterior } from "./cafe-art";
 import { drawBubble, drawDrop, drawPlant, drawSign } from "./flower-art";
 
 export const MOVE_MS = 150;
@@ -127,25 +128,8 @@ function drawHouse(X: number, Y: number) {
   rect(X + 19, Y + 24, 10, 1, "#a8956f");
   drawDoor(...doorAt(X, Y, 0, 1), "#7a5235", "#5a3e2b");
 }
-function drawCafe(X: number, Y: number) {
-  rect(X + 1, Y + 10, 46, 22, "#f3e3c3");
-  rect(X + 2, Y, 44, 2, "#7d5838");
-  rect(X, Y + 2, 48, 9, "#6b4a2e");
-  // 看板（コーヒーカップ）
-  rect(X + 20, Y + 3, 9, 7, "#f6efd9");
-  rect(X + 22, Y + 5, 4, 3, "#6b4a2e");
-  rect(X + 26, Y + 6, 1, 1, "#6b4a2e");
-  // しましまのひさし
-  for (let i = 0; i < 12; i++) rect(X + i * 4, Y + 11, 4, 4, i % 2 ? "#f6efd9" : "#c4473a");
-  // 左右の窓
-  for (const wx of [3, 35]) {
-    rect(X + wx, Y + 18, 10, 9, "#7fb6d6");
-    rect(X + wx + 5, Y + 18, 1, 9, "#f3e3c3");
-  }
-  drawDoor(...doorAt(X, Y, 1, 1), "#7a5235", "#5a3e2b");
-}
 const BUILDING_ART: Record<string, (X: number, Y: number) => void> = {
-  house: drawHouse, cafe: drawCafe,
+  house: drawHouse, cafe: (X, Y) => drawCafeExterior(rect, X, Y),
 };
 
 function drawBuilding(b: Building) {

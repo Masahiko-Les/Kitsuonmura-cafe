@@ -9,10 +9,10 @@ export const TERMS_VERSION = 3; // 2: 吃音村カフェを追加 / 3: 種と手
 // まわりは木で囲み、マップの外もずっと森が続く
 export const MAP = [
   "TTTTTTTTTTTTTTTTTTTT",
-  "TT...T.......T...TTT",
-  "T..HH....HHH.......T",
-  "T..HHN...HHH...~~..T",
-  "T..P......P....~~..T",
+  "TT...T..HHHHHT...TTT",
+  "T..HH...HHHHH......T",
+  "T..HHN..HHHHH..~~..T",
+  "T..P....HHHHH..~~..T",
   "T..PPPPPPPPPPPPP...T",
   "T.........P........T",
   "T.,,,,,...P..,,,,,.T",
@@ -50,7 +50,7 @@ export type Building = {
 };
 export const BUILDINGS: Building[] = [
   { id: "house", name: "家", x: 3, y: 2, w: 2, h: 2, door: { x: 3, y: 3 }, enterable: true },
-  { id: "cafe", name: "カフェ", x: 9, y: 2, w: 3, h: 2, door: { x: 10, y: 3 }, enterable: true },
+  { id: "cafe", name: "カフェ", x: 8, y: 1, w: 5, h: 4, door: { x: 10, y: 4 }, enterable: true },
 ];
 export const buildingAt = (x: number, y: number) =>
   BUILDINGS.find((b) => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) ?? null;
