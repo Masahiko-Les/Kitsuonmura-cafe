@@ -4,6 +4,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
 
 import { CAFE_HIDDEN_KEY } from "@/lib/cafe-api";
+import { CAFE_TALKS_KEY } from "@/lib/dekitakoto/review";
 import { deleteAllDone } from "@/lib/dekitakoto/store";
 import { agreeTerms, deleteEverything, loadUser, registerName } from "@/lib/farm-api";
 import { auth, db, isConfigured } from "@/lib/firebase";
@@ -96,7 +97,7 @@ export function FarmProvider({ children }: { children: ReactNode }) {
       throw e;
     }
     deleteAllDone();
-    await AsyncStorage.removeItem(CAFE_HIDDEN_KEY).catch(() => {});
+    await AsyncStorage.multiRemove([CAFE_HIDDEN_KEY, CAFE_TALKS_KEY]).catch(() => {});
   }, [uid]);
 
   const value: FarmState = { phase, errorMessage, uid, name, isAdmin, register, agree, deleteAllData };

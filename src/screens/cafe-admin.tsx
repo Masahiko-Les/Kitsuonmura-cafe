@@ -5,13 +5,13 @@ import { useToast } from "@/components/toast";
 import { Actions, Btn, Paper, Small, T } from "@/components/ui";
 import { questionById } from "@/lib/cafe";
 import {
-  type AnswerGroup, type CafeAnswer, type CafeReport, adminRetireSeries, groupSeries, loadOpenReports, loadPending, markReportsHandled, setSeriesStatus,
+  type AnswerGroup, type CafeAnswer, type CafeReport, adminRetireSeries, groupSeries, loadOpenReports, loadPending, loadReview, markReportsHandled, setSeriesStatus,
 } from "@/lib/cafe-api";
 import { dateText, millis } from "@/lib/farm-api";
 import { useFarm } from "@/state/farm";
 import { C } from "@/theme";
 
-type Tab = "pending" | "reports";
+type Tab = "pending" | "review" | "reports";
 type ReportGroup = { answer: CafeAnswer | null; targetId: string; reports: CafeReport[] };
 
 // 運営用：カフェの言葉の承認と、通報の確認
@@ -20,13 +20,15 @@ export function CafeAdmin() {
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("pending");
   const [pending, setPending] = useState<AnswerGroup[] | null>(null);
+  const [review, setReview] = useState<CafeAnswer[] | null>(null);
   const [reports, setReports] = useState<ReportGroup[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null); // 処理中の回答ID
 
   const fetchAll = useCallback(async () => {
-    const [p, r] = await Promise.all([loadPending(), loadOpenReports()]);
+    const [p, v, r] = await Promise.all([loadPending(), loadReview(), loadOpenReports()]);
     return {
+      v: v.sort((a, b) => millis(a.createdAt) - millis(b.createdAt)),
       p: groupSeries(p.sort((a, b) => millis(a.createdAt) - millis(b.createdAt))), // 古いものから
       r,
     };
@@ -36,26 +38,29 @@ export function CafeAdmin() {
     if (!isAdmin) return;
     let alive = true;
     fetchAll()
-      .then(({ p, r }) => { if (alive) { setPending(p); setReports(r); } })
+      .then(({ p, v, r }) => { if (alive) { setPending(p); setReview(v); setReports(r); } })
       .catch((e) => {
         console.error(e);
-        if (alive) { setError("読み込めませんでした。ルールが反映されているか確認してください。"); setPending([]); setReports([]); }
+        if (alive) { setError("読み込めませんでした。ルールが反映されているか確認してください。"); setPending([]); setReview([]); setReports([]); }
       });
     return () => { alive = false; };
   }, [isAdmin, fetchAll]);
 
   const reload = async () => {
     setPending(null);
+    setReview(null);
     setReports(null);
     setError("");
     try {
-      const { p, r } = await fetchAll();
+      const { p, v, r } = await fetchAll();
       setPending(p);
+      setReview(v);
       setReports(r);
     } catch (e) {
       console.error(e);
       setError("読み込めませんでした。");
       setPending([]);
+      setReview([]);
       setReports([]);
     }
   };
@@ -67,6 +72,20 @@ export function CafeAdmin() {
       await setSeriesStatus(g.answers.map((a) => a.id), status);
       setPending((cur) => cur?.filter((x) => x.sessionId !== g.sessionId) ?? null);
       toast(status === "public" ? "承認しました。ほかの村人に届きます。" : "承認しませんでした。3つとも本人だけの言葉になります。");
+    } catch (e) {
+      console.error(e);
+      toast("変えられませんでした。");
+    }
+    setBusy(null);
+  };
+
+  /* ---------- 要確認 ---------- */
+  const confirmReview = async (a: CafeAnswer) => {
+    setBusy(a.id);
+    try {
+      await setSeriesStatus([a.id], "private");
+      setReview((cur) => cur?.filter((x) => x.id !== a.id) ?? null);
+      toast("確認済みにしました。本人だけの言葉になります。");
     } catch (e) {
       console.error(e);
       toast("変えられませんでした。");
@@ -103,11 +122,12 @@ export function CafeAdmin() {
     return <View style={s.center}><Small>この画面は運営だけが使えます。</Small></View>;
   }
 
-  const loading = pending === null || reports === null;
+  const loading = pending === null || review === null || reports === null;
   return (
     <View style={{ flex: 1 }}>
       <View style={s.tabs}>
         <TabBtn label={`承認待ち${pending ? `（${pending.length}）` : ""}`} on={tab === "pending"} onPress={() => setTab("pending")} />
+        <TabBtn label={`要確認${review ? `（${review.length}）` : ""}`} on={tab === "review"} onPress={() => setTab("review")} />
         <TabBtn label={`通報${reports ? `（${reports.length}）` : ""}`} on={tab === "reports"} onPress={() => setTab("reports")} />
       </View>
       {loading ? (
@@ -126,6 +146,19 @@ export function CafeAdmin() {
                   <Actions>
                     <Btn kind="quiet" label="シリーズを承認しない" onPress={() => decide(g, "private")} disabled={busy === g.sessionId} />
                     {g.complete ? <Btn label="シリーズを承認する" onPress={() => decide(g, "public")} disabled={busy === g.sessionId} /> : null}
+                  </Actions>
+                </View>
+              ))}
+            </>
+          ) : tab === "review" ? (
+            <>
+              <Small>危機的な言葉を含む言葉です。ほかの村人には届いていません。本人には相談窓口を案内しています。匿名のため、運営から本人に連絡することはできません。</Small>
+              {review.length === 0 ? <T style={s.empty}>要確認の言葉はありません。</T> : null}
+              {review.map((a) => (
+                <View key={a.id} style={s.item}>
+                  <AnswerHead a={a} />
+                  <Actions>
+                    <Btn label="確認済みにする" onPress={() => confirmReview(a)} disabled={busy === a.id} />
                   </Actions>
                 </View>
               ))}

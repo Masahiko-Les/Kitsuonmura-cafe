@@ -27,7 +27,7 @@ export function useActions() {
   const modal = useModal();
   return {
     close: modal.close,
-    showSupport: (kind: "cafe", onBack?: () => void) => modal.open(<SupportModal kind={kind} onBack={onBack} />),
+    showSupport: (kind: "cafe" | "unsaved", onBack?: () => void) => modal.open(<SupportModal kind={kind} onBack={onBack} />),
     showPlant: (x: number, y: number) => modal.open(<PlantModal x={x} y={y} />),
     showDoneSeed: (id: number) => modal.open(<SeedModal id={id} />),
     showMemory: (id: number, fromBook = false) => modal.open(<MemoryModal id={id} fromBook={fromBook} />),
@@ -331,12 +331,14 @@ export function SupportList() {
   );
 }
 
-function SupportModal({ onBack }: { kind: "cafe"; onBack?: () => void }) {
+function SupportModal({ kind, onBack }: { kind: "cafe" | "unsaved"; onBack?: () => void }) {
   const a = useActions();
   return (
     <>
       <Title>ひとりで抱えこまないで</Title>
-      <Body>とてもつらい気持ちが書かれていたので、この言葉はほかの村人には届けず、運営が確認します。</Body>
+      <Body>{kind === "cafe"
+        ? "とてもつらい気持ちが書かれていたので、この言葉はほかの村人には届けず、運営が確認します。"
+        : "とてもつらい気持ちが書かれていました。この言葉はまだ保存されていません。"}</Body>
       <Body>苦しいときは、話を聞いてくれる窓口があります。</Body>
       <SupportList />
       <Small>{SUPPORT_NOTE}</Small>

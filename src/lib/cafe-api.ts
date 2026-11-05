@@ -176,6 +176,12 @@ export async function cafeRefsOf(uid: string) {
    ========================================================= */
 export type CafeReport = { id: string; targetId: string; reporterUid: string; handled?: boolean; createdAt?: Timestamp | null };
 
+// 危機的な言葉を含む回答（ほかの村人には届いていない）
+export async function loadReview(): Promise<CafeAnswer[]> {
+  const snap = await getDocs(query(collection(db, "cafeAnswers"), where("status", "==", "review")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CafeAnswer);
+}
+
 export async function loadPending(): Promise<CafeAnswer[]> {
   const snap = await getDocs(query(collection(db, "cafeAnswers"), where("status", "==", "pending")));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CafeAnswer);

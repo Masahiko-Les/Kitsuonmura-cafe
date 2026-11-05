@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { type ComponentRef, useCallback, useEffect, useRef, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -13,6 +13,7 @@ import { REACTIONS, type ReactionId, THEMES, type Theme } from "@/lib/cafe";
 import {
   CAFE_HIDDEN_KEY, type CafeSeries, type Voice, loadSeries, newSessionId, reportAnswer, saveAnswer, sendReaction, setSeriesStatus, voicesFor,
 } from "@/lib/cafe-api";
+import { countCafeTalk } from "@/lib/dekitakoto/review";
 import { checkText } from "@/lib/text";
 import { useActions } from "@/modals";
 import { useFarm } from "@/state/farm";
@@ -57,6 +58,15 @@ export function CafeScreen() {
   // 左隣に座っている村人（カフェにいるあいだは同じ）
   const [leftGuest] = useState(() => GUEST_LOOKS[Math.floor(Math.random() * GUEST_LOOKS.length)]);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  // キーボードが出たら、情景とマスターの名札を上へ送って、書く場所を広くする
+  const scrollBox = useRef({ head: 0, view: 0, content: 0 });
+  useEffect(() => {
+    const sub = Keyboard.addListener("keyboardDidShow", () => {
+      const { head, view, content } = scrollBox.current;
+      scroll.current?.scrollTo({ y: Math.max(0, Math.min(head, content - view)), animated: true });
+    });
+    return () => sub.remove();
+  }, []);
 
   const go = (next: Step) => {
     setStep(next);
@@ -91,66 +101,73 @@ export function CafeScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
     >
-      <CafeScene
-        left={leftGuest}
-        neighbor={step.kind === "voices" && voice ? GUEST_LOOKS[step.at % GUEST_LOOKS.length] : null}
-        talking={voice ? "neighbor" : "master"}
-        height={step.kind === "ask" ? 120 : 150}
-      />
-      <View style={s.nameplate}><T style={s.nameText}>{speakerName}</T></View>
       <ScrollView
         ref={scroll}
-        contentContainerStyle={[s.body, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
+        onLayout={(e) => { scrollBox.current.view = e.nativeEvent.layout.height; }}
+        onContentSizeChange={(_, h) => { scrollBox.current.content = h; }}
       >
-        {step.kind === "themes" ? <ThemeStep onPick={startTheme} /> : null}
-        {step.kind === "ask" ? (
-          <AskStep
-            key={`${step.theme.id}-${step.index}`}
-            theme={step.theme}
-            index={step.index}
-            onSave={async (text) => {
-              const res = checkText(text);
-              if (res.error) return res.error;
-              const cur = session.current;
-              if (!cur) return "";
-              const q = step.theme.questions[step.index];
-              if (uid && uid !== "offline") {
-                try {
-                  const id = await saveAnswer({
-                    uid, sessionId: cur.id, themeId: step.theme.id, questionId: q.id,
-                    text: text.trim(), status: res.crisis ? "review" : "draft",
-                  });
-                  cur.entries.push({ id, question: q.text, text: text.trim() });
-                } catch (e) {
-                  console.error(e);
-                  return "言葉を残せませんでした。通信を確認して、もう一度押してください。";
+        <View onLayout={(e) => { scrollBox.current.head = e.nativeEvent.layout.height; }}>
+          <CafeScene
+            left={leftGuest}
+            neighbor={step.kind === "voices" && voice ? GUEST_LOOKS[step.at % GUEST_LOOKS.length] : null}
+            talking={voice ? "neighbor" : "master"}
+            height={step.kind === "ask" ? 120 : 150}
+          />
+          <View style={s.nameplate}><T style={s.nameText}>{speakerName}</T></View>
+        </View>
+        <View style={s.body}>
+          {step.kind === "themes" ? <ThemeStep onPick={startTheme} /> : null}
+          {step.kind === "ask" ? (
+            <AskStep
+              key={`${step.theme.id}-${step.index}`}
+              theme={step.theme}
+              index={step.index}
+              onSave={async (text) => {
+                const res = checkText(text);
+                // 危機的な言葉があるときは、NGワードや連絡先では止めない（review で保存し、誰にも届かない）
+                if (res.error && !(res.crisis && res.filtered)) return { error: res.error, crisis: res.crisis };
+                const cur = session.current;
+                if (!cur) return {};
+                const q = step.theme.questions[step.index];
+                if (uid && uid !== "offline") {
+                  try {
+                    const id = await saveAnswer({
+                      uid, sessionId: cur.id, themeId: step.theme.id, questionId: q.id,
+                      text: text.trim(), status: res.crisis ? "review" : "draft",
+                    });
+                    cur.entries.push({ id, question: q.text, text: text.trim() });
+                  } catch (e) {
+                    console.error(e);
+                    return { error: "言葉を残せませんでした。通信を確認して、もう一度押してください。", crisis: res.crisis };
+                  }
                 }
-              }
-              if (res.crisis) cur.crisis = true;
-              await showVoices(step.theme, step.index, true);
-              return res.crisis ? "crisis" : "";
-            }}
-            onSkip={() => showVoices(step.theme, step.index, false)}
-          />
-        ) : null}
-        {step.kind === "voices" ? (
-          <VoicesStep
-            step={step}
-            onMore={() => go({ ...step, at: step.at + 1 })}
-            onNext={() => nextQuestion(step.theme, step.index)}
-            onReported={(id) => {
-              hide(id);
-              // 通報した人には、その村人の続きの言葉も出さない
-              const cur = session.current;
-              if (cur?.series) cur.series = cur.series.filter((x) => !x.answers.some((a) => a.id === id));
-              const rest = step.voices.filter((v) => v.key !== id);
-              if (rest.length === 0) nextQuestion(step.theme, step.index);
-              else go({ ...step, voices: rest, at: Math.min(step.at, rest.length - 1) });
-            }}
-          />
-        ) : null}
-        {step.kind === "end" ? <EndStep step={step} onAgain={() => go({ kind: "themes" })} /> : null}
+                if (res.crisis) cur.crisis = true;
+                await showVoices(step.theme, step.index, true);
+                return { crisis: res.crisis };
+              }}
+              onSkip={() => showVoices(step.theme, step.index, false)}
+            />
+          ) : null}
+          {step.kind === "voices" ? (
+            <VoicesStep
+              step={step}
+              onMore={() => go({ ...step, at: step.at + 1 })}
+              onNext={() => nextQuestion(step.theme, step.index)}
+              onReported={(id) => {
+                hide(id);
+                // 通報した人には、その村人の続きの言葉も出さない
+                const cur = session.current;
+                if (cur?.series) cur.series = cur.series.filter((x) => !x.answers.some((a) => a.id === id));
+                const rest = step.voices.filter((v) => v.key !== id);
+                if (rest.length === 0) nextQuestion(step.theme, step.index);
+                else go({ ...step, voices: rest, at: Math.min(step.at, rest.length - 1) });
+              }}
+            />
+          ) : null}
+          {step.kind === "end" ? <EndStep step={step} onAgain={() => go({ kind: "themes" })} /> : null}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -196,7 +213,7 @@ function ThemeStep({ onPick }: { onPick: (t: Theme) => void }) {
 function AskStep({ theme, index, onSave, onSkip }: {
   theme: Theme;
   index: number;
-  onSave: (text: string) => Promise<string>;
+  onSave: (text: string) => Promise<{ error?: string; crisis?: boolean }>;
   onSkip: () => Promise<void>;
 }) {
   const a = useActions();
@@ -209,8 +226,9 @@ function AskStep({ theme, index, onSave, onSkip }: {
     setBusy(true);
     setErr("");
     const res = await onSave(text.current);
-    if (res === "crisis") { a.showSupport("cafe"); return; }
-    if (res) { setErr(res); setBusy(false); }
+    // 保存できなかったときも、相談窓口は必ず出す
+    if (res.crisis) a.showSupport(res.error ? "unsaved" : "cafe");
+    if (res.error) { setErr(res.error); setBusy(false); }
   };
   const skip = async () => {
     setBusy(true);
@@ -344,6 +362,7 @@ function EndStep({ step, onAgain }: { step: Extract<Step, { kind: "end" }>; onAg
     try {
       await setSeriesStatus(step.entries.map((e) => e.id), share ? "pending" : "private");
       setDecided(share ? "shared" : "kept");
+      countCafeTalk();
     } catch (e) {
       console.error(e);
       toast("変えられませんでした。通信を確認してください。");
