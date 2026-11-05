@@ -1,12 +1,13 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { useToast } from "@/components/toast";
 import { SectionLabel, Small, T } from "@/components/ui";
 import { pickAndRestore, shareBackup } from "@/lib/dekitakoto/backup";
 import { jpY } from "@/lib/dekitakoto/date";
 import { setDayOffset, useDone } from "@/lib/dekitakoto/store";
+import { OPERATOR } from "@/lib/safety";
 import { useFarm } from "@/state/farm";
 import { C } from "@/theme";
 
@@ -63,6 +64,7 @@ export default function Settings() {
     <ScrollView contentContainerStyle={s.wrap}>
       <Row label="あそびかた" onPress={() => router.push("/help")} />
       <Row label="利用規約" onPress={() => router.push("/terms")} />
+      <Row label="プライバシーポリシー" onPress={() => Linking.openURL(OPERATOR.privacyUrl).catch(() => toast("⚠ ページを開けませんでした。"))} />
       <Row label="運営への連絡" onPress={() => router.push("/contact")} />
 
       <SectionLabel>「できたこと」のバックアップ</SectionLabel>

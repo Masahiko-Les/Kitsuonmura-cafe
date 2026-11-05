@@ -28,4 +28,5 @@ export const SUPPORT_NOTE = "受付時間は窓口によって違います。命
 export const OPERATOR = {
   name: "吃音村カフェ 運営",
   email: "myriel.jp@gmail.com",
+  privacyUrl: "https://masahiko-les.github.io/Kitsuonmura-cafe/privacy.html",
 };

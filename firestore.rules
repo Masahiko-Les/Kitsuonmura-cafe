@@ -16,9 +16,9 @@ service cloud.firestore {
       allow read: if signedIn() && me() == adminId;
     }
 
-    // 村人
+    // 村人。村人名はほかの村人に見せないので、読めるのは本人だけ
     match /users/{userId} {
-      allow read: if signedIn();
+      allow read: if signedIn() && me() == userId;
       allow create, update: if signedIn() && me() == userId
         && validText(request.resource.data.villagerName, 12);
       allow delete: if signedIn() && me() == userId;
