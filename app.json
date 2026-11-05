@@ -51,6 +51,17 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "backgroundColor": "#2e3a2b"
+    "backgroundColor": "#2e3a2b",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "633ddb83-5563-4417-b158-eef65d076c9e"
+      }
+    },
+    "owner": "mfujita.jp"
   }
 }
